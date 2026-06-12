@@ -3,7 +3,6 @@ module github.com/palemoky/dns-optimizer
 go 1.25.0
 
 require (
-	github.com/briandowns/spinner v1.23.2
 	github.com/fatih/color v1.19.0
 	github.com/miekg/dns v1.1.72
 	github.com/olekukonko/tablewriter v1.1.4

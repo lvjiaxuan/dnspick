@@ -32,3 +32,6 @@ go.work.sum
 # .vscode/
 
 builds/
+
+# Locally built binary (matches the module/binary name)
+/dns-optimizer
