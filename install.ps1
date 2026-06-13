@@ -1,17 +1,18 @@
 <#
 .SYNOPSIS
-    dnspick 安装脚本（Windows / PowerShell）
+    dnspick installer (Windows / PowerShell)
 
 .DESCRIPTION
-    自动检测 CPU 架构，下载对应的预编译版本并安装到用户目录，加入 PATH。
+    Auto-detects the CPU architecture, downloads the matching prebuilt binary,
+    installs it under the user directory and adds it to PATH.
 
 .EXAMPLE
     irm https://raw.githubusercontent.com/palemoky/dnspick/main/install.ps1 | iex
 
 .NOTES
-    可选环境变量：
-      DNSPICK_VERSION   指定版本（默认 latest），例如 v2.0.0
-      DNSPICK_BIN_DIR   安装目录（默认 %LOCALAPPDATA%\Programs\dnspick）
+    Optional environment variables:
+      DNSPICK_VERSION   version to install (default: latest), e.g. v2.0.0
+      DNSPICK_BIN_DIR   install directory (default: %LOCALAPPDATA%\Programs\dnspick)
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -25,15 +26,15 @@ function Ok($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[!] $m"  -ForegroundColor Yellow }
 function Die($m)  { Write-Host "[x] $m"  -ForegroundColor Red; exit 1 }
 
-# 1. 检测 CPU 架构
+# 1. Detect the CPU architecture
 switch ($env:PROCESSOR_ARCHITECTURE) {
     'AMD64' { $Arch = 'amd64' }
     'ARM64' { $Arch = 'arm64' }
-    'x86'   { Die '不支持 32 位 (x86) 系统' }
-    default { Die "不支持的架构：$($env:PROCESSOR_ARCHITECTURE)" }
+    'x86'   { Die '32-bit (x86) systems are not supported' }
+    default { Die "unsupported architecture: $($env:PROCESSOR_ARCHITECTURE)" }
 }
 
-# 2. 拼接下载地址
+# 2. Build the download URL
 $Asset = "$App-windows-$Arch.zip"
 $Url = if ($Version -eq 'latest') {
     "https://github.com/$Repo/releases/latest/download/$Asset"
@@ -41,29 +42,29 @@ $Url = if ($Version -eq 'latest') {
     "https://github.com/$Repo/releases/download/$Version/$Asset"
 }
 
-Info "平台：windows/$Arch，版本：$Version"
+Info "platform: windows/$Arch, version: $Version"
 
-# 3. 下载并解压到临时目录
+# 3. Download and extract into a temp directory
 $Tmp = Join-Path $env:TEMP ("dnspick-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $Tmp -Force | Out-Null
 try {
     $ZipPath = Join-Path $Tmp $Asset
-    Info "下载 $Asset ..."
+    Info "downloading $Asset ..."
     try {
         Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
     } catch {
-        Die "下载失败：$Url"
+        Die "download failed: $Url"
     }
 
-    Info "解压 ..."
+    Info "extracting ..."
     Expand-Archive -Path $ZipPath -DestinationPath $Tmp -Force
 
-    # 归档内二进制名为 dnspick-windows-<arch>.exe
+    # The binary in the archive is named dnspick-windows-<arch>.exe
     $BinSrc = Join-Path $Tmp "$App-windows-$Arch.exe"
     if (-not (Test-Path $BinSrc)) { $BinSrc = Join-Path $Tmp "$App.exe" }
-    if (-not (Test-Path $BinSrc)) { Die '归档中未找到可执行文件' }
+    if (-not (Test-Path $BinSrc)) { Die 'no executable found in the archive' }
 
-    # 4. 选择安装目录
+    # 4. Choose the install directory
     $BinDir = if ($env:DNSPICK_BIN_DIR) {
         $env:DNSPICK_BIN_DIR
     } else {
@@ -73,20 +74,20 @@ try {
 
     $Dest = Join-Path $BinDir "$App.exe"
     Move-Item -Path $BinSrc -Destination $Dest -Force
-    Ok "已安装到 $Dest"
+    Ok "installed to $Dest"
 
-    # 5. 加入用户 PATH
+    # 5. Add to the user PATH
     $UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     if (($UserPath -split ';') -notcontains $BinDir) {
         [Environment]::SetEnvironmentVariable('Path', "$UserPath;$BinDir", 'User')
         $env:Path = "$env:Path;$BinDir"
-        Warn "已将 $BinDir 加入用户 PATH，请重启终端后生效。"
+        Warn "added $BinDir to the user PATH; restart your terminal to take effect."
     }
 
-    Write-Host "完成！" -ForegroundColor Green -NoNewline
-    Write-Host " 运行 " -NoNewline
+    Write-Host "Done!" -ForegroundColor Green -NoNewline
+    Write-Host " Run " -NoNewline
     Write-Host "$App --help" -ForegroundColor Blue -NoNewline
-    Write-Host " 开始使用。"
+    Write-Host " to get started."
 }
 finally {
     Remove-Item -Path $Tmp -Recurse -Force -ErrorAction SilentlyContinue

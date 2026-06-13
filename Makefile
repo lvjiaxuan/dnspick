@@ -1,7 +1,7 @@
 APP_NAME := dnspick
 BUILD_DIR := builds
 
-# 版本信息（编译期注入 internal/buildinfo）
+# Version info (injected into internal/buildinfo at build time)
 PKG     := github.com/palemoky/dnspick/internal/buildinfo
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
@@ -11,13 +11,13 @@ LDFLAGS := -s -w \
 	-X $(PKG).Commit=$(COMMIT) \
 	-X $(PKG).Date=$(DATE)
 
-# 交叉编译目标平台：GOOS/GOARCH
+# Cross-compilation target platforms: GOOS/GOARCH
 PLATFORMS := \
 	linux/amd64 linux/arm64 \
 	windows/amd64 windows/arm64 \
 	darwin/amd64 darwin/arm64
 
-# 颜色输出
+# Colored output
 BLUE := \033[0;34m
 GREEN := \033[0;32m
 YELLOW := \033[0;33m
@@ -27,18 +27,18 @@ NC := \033[0m # No Color
 
 .PHONY: all build build-all clean release help
 
-## 默认：本地构建
+## Default: local build
 all: build
 
-## 显示可用命令
+## Show available commands
 help:
 	@awk 'BEGIN{FS=":"} /^## /{desc=substr($$0,4); next} /^[a-zA-Z_-]+:/{if(desc){printf "  $(CYAN)%-12s$(NC) %s\n", $$1, desc; desc=""}}' $(MAKEFILE_LIST)
 
-## 构建本机平台二进制
+## Build the binary for the host platform
 build:
 	go build -ldflags="$(LDFLAGS)" -o $(APP_NAME) .
 
-## 交叉编译所有平台到 builds/
+## Cross-compile all platforms into builds/
 build-all: clean
 	@mkdir -p $(BUILD_DIR)
 	@for platform in $(PLATFORMS); do \
@@ -50,11 +50,11 @@ build-all: clean
 	done
 	@echo "All builds completed in ./$(BUILD_DIR)"
 
-## 清理构建产物
+## Clean build artifacts
 clean:
 	rm -rf $(BUILD_DIR) $(APP_NAME)
 
-## 版本发布
+## Release a new version
 release:  ## Create and push version tag
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "$(RED)Error: Working directory has uncommitted changes$(NC)"; \
