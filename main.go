@@ -23,6 +23,7 @@ var (
 	maxConcurrency   int
 	noSystemDNS      bool
 	langFlag         string
+	jsonOutput       bool
 )
 
 var rootCmd = &cobra.Command{
@@ -62,6 +63,7 @@ func setup() {
 	flags.IntVarP(&maxConcurrency, "concurrency", "c", 16, m.FlagConcurrency)
 	flags.BoolVar(&noSystemDNS, "no-system-dns", false, m.FlagNoSystemDNS)
 	flags.StringVar(&langFlag, "lang", "", m.FlagLang)
+	flags.BoolVar(&jsonOutput, "json", false, m.FlagJSON)
 
 	rootCmd.AddCommand(versionCmd, updateCmd)
 }
@@ -106,17 +108,31 @@ func runBenchmark(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	fmt.Printf(m.BenchStarting, len(servers), len(domains))
-
-	tracker := ui.NewStatusTracker(domains, len(servers), queriesPerDomain)
-	tracker.Start()
-	results := dnsbench.Run(dnsbench.Options{
+	opts := dnsbench.Options{
 		Servers:     servers,
 		Domains:     domains,
 		Queries:     queriesPerDomain,
 		Timeout:     queryTimeout,
 		Concurrency: maxConcurrency,
-	}, tracker.Progress)
+	}
+
+	// JSON mode: stdout carries only the JSON document, status goes to stderr,
+	// and the live progress UI is skipped so the output stays pipe-friendly.
+	if jsonOutput {
+		fmt.Fprintf(os.Stderr, m.BenchStarting, len(servers), len(domains))
+		results := dnsbench.Run(opts, nil)
+		if err := ui.WriteJSON(os.Stdout, results, queriesPerDomain, len(domains)); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	fmt.Printf(m.BenchStarting, len(servers), len(domains))
+
+	tracker := ui.NewStatusTracker(domains, len(servers), queriesPerDomain)
+	tracker.Start()
+	results := dnsbench.Run(opts, tracker.Progress)
 	tracker.Stop()
 
 	fmt.Println(m.ResultsHeader)

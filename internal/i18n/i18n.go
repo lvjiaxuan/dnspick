@@ -32,6 +32,7 @@ type Messages struct {
 	FlagConcurrency string
 	FlagNoSystemDNS string
 	FlagLang        string
+	FlagJSON        string
 
 	// update command.
 	UpdateChecking string // "Current version: %s, checking for updates...\n"
@@ -82,6 +83,7 @@ var en = &Messages{
 	FlagConcurrency: "Maximum number of servers tested concurrently",
 	FlagNoSystemDNS: "Do not detect or test the current system default DNS",
 	FlagLang:        "UI language: en or zh (defaults to $LANG)",
+	FlagJSON:        "Output machine-readable JSON to stdout (suppresses the progress UI)",
 
 	UpdateChecking: "Current version: %s, checking for updates...\n",
 	UpdateFailed:   "update failed:",
@@ -126,6 +128,7 @@ var zh = &Messages{
 	FlagConcurrency: "同时测试的服务器数量上限",
 	FlagNoSystemDNS: "不检测、不测试当前系统默认 DNS",
 	FlagLang:        "界面语言：en 或 zh（默认跟随 $LANG）",
+	FlagJSON:        "以机器可读的 JSON 输出到 stdout（不显示进度界面）",
 
 	UpdateChecking: "当前版本: %s，正在检查更新...\n",
 	UpdateFailed:   "更新失败:",
