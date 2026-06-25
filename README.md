@@ -168,7 +168,7 @@ Pass `--json` to get a single JSON document on **stdout**, suitable for scripts,
 
 ```jsonc
 {
-  "schema": 1,                  // output schema version; bumped on breaking changes
+  "schema": 2,                  // output schema version; bumped on breaking changes
   "queries_per_domain": 3,
   "servers_tested": 28,
   "domains_tested": 20,
@@ -177,6 +177,7 @@ Pass `--json` to get a single JSON document on **stdout**, suitable for scripts,
       "rank": 1,                // 1-based rank in this list
       "name": "Quad9 (UDP)",
       "address": "9.9.9.9",
+      "protocol": "udp",        // udp | dot | doh
       "is_system": false,       // true for your detected system default DNS
       "avg_latency_ms": 4.235,  // average latency in milliseconds
       "success_rate": 1.0,      // 0.0–1.0
@@ -187,14 +188,15 @@ Pass `--json` to get a single JSON document on **stdout**, suitable for scripts,
   ],
   "recommendation": {
     "top": [                    // up to 3 reliable picks, with their overall rank
-      { "rank": 1, "name": "Quad9 (UDP)", "address": "9.9.9.9" }
+      { "rank": 1, "name": "Quad9 (UDP)", "address": "9.9.9.9", "protocol": "udp" }
     ],
     "system_dns": {             // omitted when --no-system-dns or none detected
       "name": "Current default DNS",
       "address": "192.168.50.2",
       "rank": 5,
       "verdict": "good_enough", // best | good_enough | switch | all_failed
-      "should_switch": false    // actionable boolean derived from verdict
+      "should_switch": false,   // actionable boolean derived from verdict
+      "is_internal_dns": true   // private (RFC 1918/4193) or loopback resolver
     }
   }
 }
@@ -210,6 +212,8 @@ Pass `--json` to get a single JSON document on **stdout**, suitable for scripts,
 | `success_rate` | Fraction of successful queries, `0.0`–`1.0`. |
 | `recommendation.top[]` | Up to 3 servers with a success rate above 98%, in ranked order. Empty when none qualify. |
 | `recommendation.system_dns.verdict` | Stable enum: `best` (already optimal), `good_enough` (keep it), `switch` (a clearly better server exists), `all_failed` (every query failed). |
+| `recommendation.system_dns.is_internal_dns` | `true` when the system DNS is a private (RFC 1918/4193) or loopback resolver; switching to an external DNS may break internal hostname resolution. |
+| `protocol` | Transport for the server: `udp`, `dot` (DNS-over-TLS) or `doh` (DNS-over-HTTPS). DoT addresses are shown as `tls://host` in the text report. |
 | `recommendation.system_dns.should_switch` | Convenience boolean: `true` when `verdict` is `switch` or `all_failed`. |
 
 ---

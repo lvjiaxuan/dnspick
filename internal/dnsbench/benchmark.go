@@ -19,6 +19,7 @@ type Options struct {
 // Result is the final benchmark result for a single DNS server.
 type Result struct {
 	Name, Address      string
+	Protocol           string // UDP, DOT or DOH
 	AvgTime            time.Duration
 	SuccessRate, Score float64
 	Successes, Total   int
@@ -38,6 +39,7 @@ type serverStat struct {
 	successes int
 	total     int
 	address   string
+	protocol  string
 	isSystem  bool
 }
 
@@ -124,7 +126,7 @@ func aggregateResults(resultsChan <-chan queryResult) map[string]*serverStat {
 	for result := range resultsChan {
 		stats, ok := serverStats[result.server.Name]
 		if !ok {
-			stats = &serverStat{address: result.server.Address, isSystem: result.server.IsSystem}
+			stats = &serverStat{address: result.server.Address, protocol: result.server.Protocol, isSystem: result.server.IsSystem}
 			serverStats[result.server.Name] = stats
 		}
 		stats.total++
@@ -141,8 +143,8 @@ func calculateScores(serverStats map[string]*serverStat) []Result {
 	var results []Result
 	for name, stats := range serverStats {
 		res := Result{
-			Name: name, Address: stats.address, Successes: stats.successes, Total: stats.total,
-			IsSystem: stats.isSystem,
+			Name: name, Address: stats.address, Protocol: stats.protocol,
+			Successes: stats.successes, Total: stats.total, IsSystem: stats.isSystem,
 		}
 
 		if stats.successes > 0 {

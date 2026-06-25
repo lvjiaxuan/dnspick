@@ -65,4 +65,89 @@ func TestSystemDNSVerdict(t *testing.T) {
 			t.Fatalf("got ok=%v msg=%q", ok, msg)
 		}
 	})
+
+	// RFC 1918 and loopback addresses as system DNS should append a private-DNS
+	// note when switching is recommended, so users on corporate networks (or
+	// behind a local stub resolver like systemd-resolved's 127.0.0.53) are not
+	// misled into a switch that breaks internal name resolution.
+	for _, privateAddr := range []string{"10.0.0.1", "172.16.63.95", "192.168.1.1", "127.0.0.53", "127.0.0.1"} {
+		addr := privateAddr
+		t.Run("private system DNS switch includes note ("+addr+")", func(t *testing.T) {
+			sys := dnsbench.Result{
+				Name: "sys", Address: addr,
+				AvgTime:     25 * time.Millisecond,
+				SuccessRate: 1.0, Successes: 10, Total: 10, IsSystem: true,
+			}
+			res := []dnsbench.Result{mk("A", 5, 1.0, false), sys}
+			msg, ok := systemDNSVerdict(res)
+			if !ok {
+				t.Fatal("expected ok=true")
+			}
+			if !strings.Contains(msg, "internal") {
+				t.Fatalf("expected private DNS note in message; got %q", msg)
+			}
+		})
+	}
+
+	t.Run("private system DNS all-failed includes note", func(t *testing.T) {
+		sys := dnsbench.Result{
+			Name: "sys", Address: "172.16.63.95",
+			AvgTime:     0,
+			SuccessRate: 0, Successes: 0, Total: 10, IsSystem: true,
+		}
+		res := []dnsbench.Result{mk("A", 5, 1.0, false), sys}
+		msg, ok := systemDNSVerdict(res)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if !strings.Contains(msg, "internal") {
+			t.Fatalf("expected private DNS note in message; got %q", msg)
+		}
+	})
+
+	t.Run("public system DNS switch has no private note", func(t *testing.T) {
+		res := []dnsbench.Result{mk("A", 5, 1.0, false), mk("8.8.8.8", 25, 1.0, true)}
+		msg, ok := systemDNSVerdict(res)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if strings.Contains(msg, "internal") {
+			t.Fatalf("public DNS should not trigger private note; got %q", msg)
+		}
+	})
+
+	t.Run("private system DNS good-enough has no private note", func(t *testing.T) {
+		sys := dnsbench.Result{
+			Name: "sys", Address: "192.168.1.1",
+			AvgTime:     7 * time.Millisecond,
+			SuccessRate: 1.0, Successes: 10, Total: 10, IsSystem: true,
+		}
+		res := []dnsbench.Result{mk("A", 5, 1.0, false), sys}
+		msg, ok := systemDNSVerdict(res)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if strings.Contains(msg, "internal") {
+			t.Fatalf("good-enough verdict should not include private note; got %q", msg)
+		}
+	})
+}
+
+// displayAddress should make the protocol obvious for DoT (which is otherwise a
+// bare hostname users can't configure correctly), while leaving UDP IPs and the
+// already-scheme'd DoH URLs untouched.
+func TestDisplayAddress(t *testing.T) {
+	cases := []struct {
+		protocol, address, want string
+	}{
+		{dnsbench.UDP, "8.8.8.8", "8.8.8.8"},
+		{dnsbench.DOT, "dns.google", "tls://dns.google"},
+		{dnsbench.DOH, "https://dns.google/dns-query", "https://dns.google/dns-query"},
+	}
+	for _, c := range cases {
+		got := displayAddress(dnsbench.Result{Address: c.address, Protocol: c.protocol})
+		if got != c.want {
+			t.Errorf("displayAddress(%s, %q) = %q; want %q", c.protocol, c.address, got, c.want)
+		}
+	}
 }

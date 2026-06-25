@@ -11,7 +11,7 @@ import (
 // jsonSchemaVersion is the version of the --json document structure. It is the
 // stability contract for automated consumers: bump it on any backward-incompatible
 // change so they can guard on it.
-const jsonSchemaVersion = 1
+const jsonSchemaVersion = 2
 
 // jsonReport is the top-level machine-readable benchmark output.
 type jsonReport struct {
@@ -29,6 +29,7 @@ type jsonResult struct {
 	Rank         int     `json:"rank"`
 	Name         string  `json:"name"`
 	Address      string  `json:"address"`
+	Protocol     string  `json:"protocol"`
 	IsSystem     bool    `json:"is_system"`
 	AvgLatencyMs float64 `json:"avg_latency_ms"`
 	SuccessRate  float64 `json:"success_rate"`
@@ -43,19 +44,24 @@ type jsonRecommendation struct {
 }
 
 type jsonTop struct {
-	Rank    int    `json:"rank"`
-	Name    string `json:"name"`
-	Address string `json:"address"`
+	Rank     int    `json:"rank"`
+	Name     string `json:"name"`
+	Address  string `json:"address"`
+	Protocol string `json:"protocol"`
 }
 
 // jsonSystemVerdict is the conclusion about the system default DNS. Verdict is a
 // stable enum (see VerdictKind); should_switch is the actionable boolean.
+// is_internal_dns is true when the address is a private (RFC 1918 / RFC 4193) or
+// loopback resolver, signalling that switching to an external DNS may break
+// internal hostname resolution.
 type jsonSystemVerdict struct {
-	Name         string      `json:"name"`
-	Address      string      `json:"address"`
-	Rank         int         `json:"rank"`
-	Verdict      VerdictKind `json:"verdict"`
-	ShouldSwitch bool        `json:"should_switch"`
+	Name          string      `json:"name"`
+	Address       string      `json:"address"`
+	Rank          int         `json:"rank"`
+	Verdict       VerdictKind `json:"verdict"`
+	ShouldSwitch  bool        `json:"should_switch"`
+	IsInternalDNS bool        `json:"is_internal_dns"`
 }
 
 // WriteJSON serializes the benchmark results as indented JSON to w. domains is the
@@ -75,6 +81,7 @@ func WriteJSON(w io.Writer, results []dnsbench.Result, queriesPerDomain, domains
 			Rank:         i + 1,
 			Name:         r.Name,
 			Address:      r.Address,
+			Protocol:     r.Protocol,
 			IsSystem:     r.IsSystem,
 			AvgLatencyMs: latencyMs(r.AvgTime),
 			SuccessRate:  r.SuccessRate,
@@ -86,19 +93,21 @@ func WriteJSON(w io.Writer, results []dnsbench.Result, queriesPerDomain, domains
 
 	for _, best := range topRecommendations(results) {
 		rep.Recommendation.Top = append(rep.Recommendation.Top, jsonTop{
-			Rank:    best.Rank,
-			Name:    best.Name,
-			Address: best.Address,
+			Rank:     best.Rank,
+			Name:     best.Name,
+			Address:  best.Address,
+			Protocol: best.Protocol,
 		})
 	}
 
 	if e, ok := evalSystemDNS(results); ok {
 		rep.Recommendation.SystemDNS = &jsonSystemVerdict{
-			Name:         e.sys.Name,
-			Address:      e.sys.Address,
-			Rank:         e.rank,
-			Verdict:      e.kind,
-			ShouldSwitch: e.kind == VerdictSwitch || e.kind == VerdictAllFailed,
+			Name:          e.sys.Name,
+			Address:       e.sys.Address,
+			Rank:          e.rank,
+			Verdict:       e.kind,
+			ShouldSwitch:  e.kind == VerdictSwitch || e.kind == VerdictAllFailed,
+			IsInternalDNS: isInternalDNS(e.sys.Address),
 		}
 	}
 

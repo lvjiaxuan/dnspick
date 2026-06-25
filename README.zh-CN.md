@@ -168,7 +168,7 @@ dnspick --json | jq '.recommendation.top'
 
 ```jsonc
 {
-  "schema": 1,                  // 输出结构版本号；不兼容变更时递增
+  "schema": 2,                  // 输出结构版本号；不兼容变更时递增
   "queries_per_domain": 3,
   "servers_tested": 28,
   "domains_tested": 20,
@@ -177,6 +177,7 @@ dnspick --json | jq '.recommendation.top'
       "rank": 1,                // 在本列表中的排名（从 1 开始）
       "name": "Quad9 (UDP)",
       "address": "9.9.9.9",
+      "protocol": "udp",        // udp | dot | doh
       "is_system": false,       // 为你检测到的系统默认 DNS 时为 true
       "avg_latency_ms": 4.235,  // 平均延迟（毫秒）
       "success_rate": 1.0,      // 0.0–1.0
@@ -187,14 +188,15 @@ dnspick --json | jq '.recommendation.top'
   ],
   "recommendation": {
     "top": [                    // 最多 3 个可靠推荐，附带其总排名
-      { "rank": 1, "name": "Quad9 (UDP)", "address": "9.9.9.9" }
+      { "rank": 1, "name": "Quad9 (UDP)", "address": "9.9.9.9", "protocol": "udp" }
     ],
     "system_dns": {             // 使用 --no-system-dns 或未检测到时省略
       "name": "Current default DNS",
       "address": "192.168.50.2",
       "rank": 5,
       "verdict": "good_enough", // best | good_enough | switch | all_failed
-      "should_switch": false    // 由 verdict 推导出的可操作布尔值
+      "should_switch": false,   // 由 verdict 推导出的可操作布尔值
+      "is_internal_dns": true   // 内网（RFC 1918/4193）或回环解析器
     }
   }
 }
@@ -210,6 +212,8 @@ dnspick --json | jq '.recommendation.top'
 | `success_rate` | 查询成功率，范围 `0.0`–`1.0`。 |
 | `recommendation.top[]` | 成功率超过 98% 的服务器，最多 3 个，按排名排序。无符合者时为空。 |
 | `recommendation.system_dns.verdict` | 稳定枚举：`best`（已最优）、`good_enough`（无需更换）、`switch`（存在明显更优的服务器）、`all_failed`（全部查询失败）。 |
+| `recommendation.system_dns.is_internal_dns` | 系统 DNS 为内网（RFC 1918/4193）或回环解析器时为 `true`；此时切换到外部 DNS 可能导致内部域名无法解析。 |
+| `protocol` | 服务器的传输协议：`udp`、`dot`（DNS-over-TLS）或 `doh`（DNS-over-HTTPS）。文本报告中 DoT 地址会显示为 `tls://host`。 |
 | `recommendation.system_dns.should_switch` | 便捷布尔值：当 `verdict` 为 `switch` 或 `all_failed` 时为 `true`。 |
 
 ---

@@ -57,6 +57,7 @@ type Messages struct {
 	VerdictBest       string // (sysAddr)
 	VerdictGoodEnough string // (sysAddr, rank, latencyGap)
 	VerdictSwitch     string // (sysAddr, rank, bestName, bestAddr, sysAvg, bestAvg)
+	PrivateDNSNote    string // (sysAddr) — appended when system DNS is an RFC-1918 address
 
 	// progress.
 	ProgressPercent string // "  Progress: %d%%\n"
@@ -104,6 +105,7 @@ var en = &Messages{
 	VerdictBest:       "✅ Current default DNS (%s) is already the best; no change needed.",
 	VerdictGoodEnough: "✅ Current default DNS (%s) is good enough (ranked #%d, only %s slower); no change needed.",
 	VerdictSwitch:     "⚠️  Current default DNS (%s) ranked #%d; consider switching to #1 %s (%s): avg latency %s → %s.",
+	PrivateDNSNote:    "\n⚠️  Note: %s appears to be an internal/corporate DNS server. Switching to an external DNS may break resolution of private hostnames.",
 
 	ProgressPercent: "  Progress: %d%%\n",
 	ProgressLine:    "Progress: %d%% (%d/%d)",
@@ -149,6 +151,7 @@ var zh = &Messages{
 	VerdictBest:       "✅ 当前默认 DNS (%s) 已是最优，无需调整。",
 	VerdictGoodEnough: "✅ 当前默认 DNS (%s) 已足够好（排名第 %d，仅慢 %s），无需调整。",
 	VerdictSwitch:     "⚠️  当前默认 DNS (%s) 排名第 %d，建议切换到 #1 %s (%s)：平均延迟 %s → %s。",
+	PrivateDNSNote:    "\n⚠️  注意：%s 看起来是内网或企业 DNS，切换为外部 DNS 可能导致内部域名无法解析。",
 
 	ProgressPercent: "  测试进度: %d%%\n",
 	ProgressLine:    "测试进度: %d%% (%d/%d)",

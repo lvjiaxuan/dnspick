@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -36,7 +37,7 @@ func PrintResultsTable(results []dnsbench.Result) {
 		table.Append([]string{
 			fmt.Sprintf("%d", i+1),
 			name,
-			r.Address,
+			displayAddress(r),
 			r.AvgTime.Round(time.Microsecond).String(),
 			rateStr,
 			fmt.Sprintf("%.2f", r.Score),
@@ -85,7 +86,7 @@ func PrintRecommendations(results []dnsbench.Result) {
 
 	top := topRecommendations(results)
 	for i, best := range top {
-		palette[i].Printf("#%d: %s (%s)\n", i+1, best.Name, best.Address)
+		palette[i].Printf("#%d: %s (%s)\n", i+1, best.Name, displayAddress(best.Result))
 		fmt.Printf(i18n.L().RecommendLine,
 			best.Score, best.AvgTime.Round(time.Microsecond).String(), best.SuccessRate*100)
 	}
@@ -171,6 +172,26 @@ func evalSystemDNS(results []dnsbench.Result) (systemEval, bool) {
 	return e, true
 }
 
+// isInternalDNS reports whether addr is a local/internal resolver: an RFC 1918
+// or RFC 4193 private address, or a loopback address. Loopback covers stub
+// resolvers such as systemd-resolved's 127.0.0.53, which forward to an upstream
+// (often VPN/corporate) DNS, so switching away from them can also break internal
+// name resolution.
+func isInternalDNS(addr string) bool {
+	ip := net.ParseIP(strings.TrimSpace(addr))
+	return ip != nil && (ip.IsPrivate() || ip.IsLoopback())
+}
+
+// displayAddress renders a server address for human-facing output. DoT servers
+// are shown with a tls:// scheme so users can tell the protocol apart from plain
+// UDP, mirroring the https:// already carried by DoH addresses.
+func displayAddress(r dnsbench.Result) string {
+	if r.Protocol == dnsbench.DOT {
+		return "tls://" + r.Address
+	}
+	return r.Address
+}
+
 // systemDNSVerdict produces a localized conclusion on whether the system default
 // DNS should be changed. If the results contain no system DNS, ok is false.
 // results must be sorted by score in descending order.
@@ -181,15 +202,19 @@ func systemDNSVerdict(results []dnsbench.Result) (msg string, ok bool) {
 	}
 
 	m := i18n.L()
+	privateNote := ""
+	if isInternalDNS(e.sys.Address) {
+		privateNote = fmt.Sprintf(m.PrivateDNSNote, e.sys.Address)
+	}
 	switch e.kind {
 	case VerdictAllFailed:
-		return fmt.Sprintf(m.VerdictAllFailed, e.sys.Address, e.best.Name, e.best.Address), true
+		return fmt.Sprintf(m.VerdictAllFailed, displayAddress(e.sys), e.best.Name, displayAddress(e.best)) + privateNote, true
 	case VerdictBest:
-		return fmt.Sprintf(m.VerdictBest, e.sys.Address), true
+		return fmt.Sprintf(m.VerdictBest, displayAddress(e.sys)), true
 	case VerdictGoodEnough:
-		return fmt.Sprintf(m.VerdictGoodEnough, e.sys.Address, e.rank, e.latencyGap.Round(time.Microsecond)), true
+		return fmt.Sprintf(m.VerdictGoodEnough, displayAddress(e.sys), e.rank, e.latencyGap.Round(time.Microsecond)), true
 	default:
-		return fmt.Sprintf(m.VerdictSwitch, e.sys.Address, e.rank, e.best.Name, e.best.Address,
-			e.sys.AvgTime.Round(time.Microsecond), e.best.AvgTime.Round(time.Microsecond)), true
+		return fmt.Sprintf(m.VerdictSwitch, displayAddress(e.sys), e.rank, e.best.Name, displayAddress(e.best),
+			e.sys.AvgTime.Round(time.Microsecond), e.best.AvgTime.Round(time.Microsecond)) + privateNote, true
 	}
 }
