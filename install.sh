@@ -10,7 +10,7 @@
 
 set -eu
 
-REPO="palemoky/dnspick"
+REPO="lvjiaxuan/dnspick"
 APP="dnspick"
 VERSION="${DNSPICK_VERSION:-latest}"
 

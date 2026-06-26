@@ -21,3 +21,32 @@ func TestLangFromArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestParsePorts(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []int
+	}{
+		{"", nil},
+		{"  ", nil},
+		{"443", []int{443}},
+		{"443,22", []int{443, 22}},
+		{" 443 , 22 , 80 ", []int{443, 22, 80}},
+		{"443,443,22", []int{443, 22}},  // deduplicate
+		{"abc,443,xyz", []int{443}},      // invalid entries skipped
+		{"0,443,70000", []int{443}},      // out-of-range skipped
+		{",,,443,,,", []int{443}},        // empty segments skipped
+	}
+	for _, tt := range tests {
+		got := parsePorts(tt.input)
+		if len(got) != len(tt.want) {
+			t.Errorf("parsePorts(%q) = %v, want %v", tt.input, got, tt.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tt.want[i] {
+				t.Errorf("parsePorts(%q)[%d] = %d, want %d", tt.input, i, got[i], tt.want[i])
+			}
+		}
+	}
+}

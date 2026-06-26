@@ -26,16 +26,16 @@ type jsonReport struct {
 // jsonResult is a single server's result. Latency is expressed in milliseconds
 // (rounded to microsecond precision) so consumers needn't parse Go durations.
 type jsonResult struct {
-	Rank         int     `json:"rank"`
-	Name         string  `json:"name"`
-	Address      string  `json:"address"`
+	Rank         int               `json:"rank"`
+	Name         string            `json:"name"`
+	Address      string            `json:"address"`
 	Protocol     dnsbench.Protocol `json:"protocol"`
-	IsSystem     bool    `json:"is_system"`
-	AvgLatencyMs float64 `json:"avg_latency_ms"`
-	SuccessRate  float64 `json:"success_rate"`
-	Successes    int     `json:"successes"`
-	Total        int     `json:"total"`
-	Score        float64 `json:"score"`
+	IsSystem     bool              `json:"is_system"`
+	AvgLatencyMs float64           `json:"avg_latency_ms"`
+	SuccessRate  float64           `json:"success_rate"`
+	Successes    int               `json:"successes"`
+	Total        int               `json:"total"`
+	Score        float64           `json:"score"`
 }
 
 type jsonRecommendation struct {
@@ -44,9 +44,9 @@ type jsonRecommendation struct {
 }
 
 type jsonTop struct {
-	Rank     int    `json:"rank"`
-	Name     string `json:"name"`
-	Address  string `json:"address"`
+	Rank     int               `json:"rank"`
+	Name     string            `json:"name"`
+	Address  string            `json:"address"`
 	Protocol dnsbench.Protocol `json:"protocol"`
 }
 

@@ -138,7 +138,7 @@ func TestSystemDNSVerdict(t *testing.T) {
 // already-scheme'd DoH URLs untouched.
 func TestDisplayAddress(t *testing.T) {
 	cases := []struct {
-		protocol       dnsbench.Protocol
+		protocol      dnsbench.Protocol
 		address, want string
 	}{
 		{dnsbench.UDP, "8.8.8.8", "8.8.8.8"},

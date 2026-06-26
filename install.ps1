@@ -17,7 +17,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$Repo = 'palemoky/dnspick'
+$Repo = 'lvjiaxuan/dnspick'
 $App  = 'dnspick'
 $Version = if ($env:DNSPICK_VERSION) { $env:DNSPICK_VERSION } else { 'latest' }
 

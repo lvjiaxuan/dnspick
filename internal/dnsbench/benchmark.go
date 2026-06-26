@@ -15,6 +15,7 @@ type Options struct {
 	Queries     int           // number of queries per domain
 	Timeout     time.Duration // timeout per query
 	Concurrency int           // maximum number of servers tested concurrently
+	Ports       []int         // TCP ports to test connectivity for resolved IPs (empty = skip)
 }
 
 // Result is the final benchmark result for a single DNS server.
@@ -25,23 +26,41 @@ type Result struct {
 	SuccessRate, Score float64
 	Successes, Total   int
 	IsSystem           bool // whether this is the system default DNS
+	Resolutions        []Resolution
+	PortResults        map[string]PortResult
+}
+
+// Resolution records the IPs a DNS server resolved for a single domain.
+type Resolution struct {
+	Domain   string
+	IPs      []string
+	Category string
 }
 
 // queryResult is the raw result of a single query.
 type queryResult struct {
 	server   Server
+	domain   string
 	duration time.Duration
+	ips      []string
 	err      error
 }
 
 // serverStat aggregates the benchmark data for a single DNS server.
 type serverStat struct {
-	totalTime time.Duration
-	successes int
-	total     int
-	address   string
-	protocol  Protocol
-	isSystem  bool
+	totalTime   time.Duration
+	successes   int
+	total       int
+	address     string
+	protocol    Protocol
+	isSystem    bool
+	resolutions map[string]*resolutionData
+}
+
+// resolutionData collects unique IPs resolved for a domain.
+type resolutionData struct {
+	ips    []string
+	ipSeen map[string]struct{}
 }
 
 // ParseDomains splits, trims and deduplicates a custom domain list, preserving
@@ -98,7 +117,16 @@ func Run(opts Options, progress func(domain string)) []Result {
 	wg.Wait()
 	close(resultsChan)
 
-	return calculateScores(aggregateResults(resultsChan))
+	stats := aggregateResults(resultsChan, opts.Domains)
+
+	// Collect all unique resolved IPs and test TCP port connectivity (if enabled).
+	var portResults map[string]PortResult
+	if len(opts.Ports) > 0 {
+		allIPs := collectUniqueIPs(stats)
+		portResults = testPorts(allIPs, opts.Ports, opts.Timeout, opts.Concurrency)
+	}
+
+	return calculateScores(stats, opts.Domains, portResults)
 }
 
 // benchmarkServer runs all queries sequentially against a single server.
@@ -111,43 +139,86 @@ func benchmarkServer(server Server, opts Options, ch chan<- queryResult, progres
 
 	// Warm-up (result discarded).
 	if len(opts.Domains) > 0 {
-		_, _ = q(opts.Domains[0].Name)
+		_, _, _ = q(opts.Domains[0].Name)
 	}
 
 	for _, domain := range opts.Domains {
 		for range opts.Queries {
-			d, err := q(domain.Name)
-			ch <- queryResult{server: server, duration: d, err: err}
+			d, ips, err := q(domain.Name)
+			ch <- queryResult{server: server, domain: domain.Name, duration: d, ips: ips, err: err}
 			progress(domain.Name)
 		}
 	}
 }
 
 // aggregateResults collects and aggregates data from the channel.
-func aggregateResults(resultsChan <-chan queryResult) map[string]*serverStat {
+// Resolved IPs are collected for all domains when port testing is enabled.
+func aggregateResults(resultsChan <-chan queryResult, domains []Domain) map[string]*serverStat {
 	serverStats := make(map[string]*serverStat)
 	for result := range resultsChan {
 		stats, ok := serverStats[result.server.Name]
 		if !ok {
-			stats = &serverStat{address: result.server.Address, protocol: result.server.Protocol, isSystem: result.server.IsSystem}
+			stats = &serverStat{
+				address:     result.server.Address,
+				protocol:    result.server.Protocol,
+				isSystem:    result.server.IsSystem,
+				resolutions: make(map[string]*resolutionData),
+			}
 			serverStats[result.server.Name] = stats
 		}
 		stats.total++
 		if result.err == nil {
 			stats.totalTime += result.duration
 			stats.successes++
+			// Collect unique resolved IPs for all domains.
+			if len(result.ips) > 0 {
+				rd, ok := stats.resolutions[result.domain]
+				if !ok {
+					rd = &resolutionData{ipSeen: make(map[string]struct{})}
+					stats.resolutions[result.domain] = rd
+				}
+				for _, ip := range result.ips {
+					if _, seen := rd.ipSeen[ip]; !seen {
+						rd.ipSeen[ip] = struct{}{}
+						rd.ips = append(rd.ips, ip)
+					}
+				}
+			}
 		}
 	}
 	return serverStats
 }
 
+// collectUniqueIPs gathers all unique resolved IPs across all servers.
+func collectUniqueIPs(stats map[string]*serverStat) []string {
+	seen := make(map[string]struct{})
+	var ips []string
+	for _, s := range stats {
+		for _, rd := range s.resolutions {
+			for _, ip := range rd.ips {
+				if _, ok := seen[ip]; !ok {
+					seen[ip] = struct{}{}
+					ips = append(ips, ip)
+				}
+			}
+		}
+	}
+	return ips
+}
+
 // calculateScores computes the final Result list and sorts it by score in descending order.
-func calculateScores(serverStats map[string]*serverStat) []Result {
+func calculateScores(serverStats map[string]*serverStat, domains []Domain, portResults map[string]PortResult) []Result {
+	catMap := make(map[string]string, len(domains))
+	for _, d := range domains {
+		catMap[d.Name] = d.Category
+	}
+
 	var results []Result
 	for name, stats := range serverStats {
 		res := Result{
 			Name: name, Address: stats.address, Protocol: stats.protocol,
 			Successes: stats.successes, Total: stats.total, IsSystem: stats.isSystem,
+			PortResults: portResults,
 		}
 
 		if stats.successes > 0 {
@@ -156,6 +227,19 @@ func calculateScores(serverStats map[string]*serverStat) []Result {
 			latencyScore := 1.0 / res.AvgTime.Seconds()
 			res.Score = latencyScore * (res.SuccessRate * res.SuccessRate)
 		}
+
+		// Build resolution records with domain category.
+		for domain, rd := range stats.resolutions {
+			res.Resolutions = append(res.Resolutions, Resolution{
+				Domain:   domain,
+				IPs:      rd.ips,
+				Category: catMap[domain],
+			})
+		}
+		slices.SortFunc(res.Resolutions, func(a, b Resolution) int {
+			return cmp.Compare(a.Domain, b.Domain)
+		})
+
 		results = append(results, res)
 	}
 

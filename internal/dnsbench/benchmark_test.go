@@ -36,7 +36,7 @@ func TestAggregateResults(t *testing.T) {
 	ch <- queryResult{server: srv, err: errors.New("boom")}
 	close(ch)
 
-	stats := aggregateResults(ch)
+	stats := aggregateResults(ch, nil)
 	s, ok := stats["X"]
 	if !ok {
 		t.Fatal("missing server X")
@@ -60,7 +60,7 @@ func TestCalculateScores(t *testing.T) {
 		"dead":  {successes: 0, total: 2, address: "4.4.4.4"},
 	}
 
-	res := calculateScores(stats)
+	res := calculateScores(stats, nil, nil)
 	if len(res) != 4 {
 		t.Fatalf("expected 4 results, got %d", len(res))
 	}
@@ -86,5 +86,42 @@ func TestCalculateScores(t *testing.T) {
 	// fast's avg latency should be 10ms (20ms / 2 successes).
 	if res[0].AvgTime != 10*time.Millisecond {
 		t.Fatalf("fast AvgTime=%v, want 10ms", res[0].AvgTime)
+	}
+}
+
+func TestAggregateResultsIPCollection(t *testing.T) {
+	srv := Server{Name: "X", Address: "1.2.3.4", Protocol: UDP}
+	domains := []Domain{
+		{Name: "a.com", Category: CategoryForeign},
+		{Name: "b.com", Category: CategoryForeign},
+	}
+
+	ch := make(chan queryResult, 4)
+	ch <- queryResult{server: srv, domain: "a.com", duration: 10 * time.Millisecond, ips: []string{"1.1.1.1"}}
+	ch <- queryResult{server: srv, domain: "a.com", duration: 20 * time.Millisecond, ips: []string{"1.1.1.1", "2.2.2.2"}}
+	ch <- queryResult{server: srv, domain: "b.com", duration: 15 * time.Millisecond, ips: []string{"3.3.3.3"}}
+	ch <- queryResult{server: srv, domain: "b.com", duration: 25 * time.Millisecond, ips: []string{"4.4.4.4"}}
+	close(ch)
+
+	stats := aggregateResults(ch, domains)
+	s := stats["X"]
+
+	// Both domains should have resolutions collected (no per-domain filter).
+	if _, ok := s.resolutions["a.com"]; !ok {
+		t.Fatal("expected a.com to have resolutions collected")
+	}
+	if _, ok := s.resolutions["b.com"]; !ok {
+		t.Fatal("expected b.com to have resolutions collected")
+	}
+
+	// Verify a.com has unique IPs.
+	aIPs := s.resolutions["a.com"].ips
+	if len(aIPs) != 2 {
+		t.Fatalf("expected 2 unique IPs for a.com, got %d: %v", len(aIPs), aIPs)
+	}
+
+	// total/successes should still count all queries.
+	if s.total != 4 || s.successes != 4 {
+		t.Fatalf("total=%d successes=%d, want 4/4", s.total, s.successes)
 	}
 }

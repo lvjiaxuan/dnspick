@@ -34,6 +34,8 @@ type Messages struct {
 	FlagNoSystemDNS string
 	FlagLang        string
 	FlagJSON        string
+	FlagPort        string
+	FlagPortOnly    string
 
 	// update command.
 	UpdateChecking string // "Current version: %s, checking for updates...\n"
@@ -71,6 +73,14 @@ type Messages struct {
 	CatCustom      string
 	SystemDNSName  string // single system DNS
 	SystemDNSNameN string // "Current default DNS %d"
+
+	// resolution details & port connectivity.
+	ResolveHeader string   // section header for DNS resolution details
+	ResolveCol    []string // DNS Server, Domain, Category, Resolved IPs
+	PortHeader    string   // section header for port 443 connectivity
+	PortCol       []string // IP Address, Port 443, Latency
+	PortOK        string   // "✔"
+	PortFail      string   // "✗"
 }
 
 var en = &Messages{
@@ -86,6 +96,8 @@ var en = &Messages{
 	FlagNoSystemDNS: "Do not detect or test the current system default DNS",
 	FlagLang:        "UI language: en or zh (defaults to $LANG)",
 	FlagJSON:        "Output machine-readable JSON to stdout (suppresses the progress UI)",
+	FlagPort:        "Comma-separated ports to test TCP connectivity for resolved IPs (e.g. 443,22)",
+	FlagPortOnly:    "Only output DNS resolution and port connectivity test results (e.g. 443,22)",
 
 	UpdateChecking: "Current version: %s, checking for updates...\n",
 	UpdateFailed:   "update failed:",
@@ -117,6 +129,13 @@ var en = &Messages{
 	CatCustom:      "Custom",
 	SystemDNSName:  "Current default DNS",
 	SystemDNSNameN: "Current default DNS %d",
+
+	ResolveHeader: "\n--- IP Port Connectivity Test ---",
+	ResolveCol:    []string{"#", "DNS Server", "Domain", "Category", "Resolved IPs"},
+	PortHeader:    "\n--- Port Connectivity ---",
+	PortCol:       []string{"#", "IP Address", "Domain", "Port", "Latency"},
+	PortOK:        "✔",
+	PortFail:      "✗",
 }
 
 var zh = &Messages{
@@ -132,6 +151,8 @@ var zh = &Messages{
 	FlagNoSystemDNS: "不检测、不测试当前系统默认 DNS",
 	FlagLang:        "界面语言：en 或 zh（默认跟随 $LANG）",
 	FlagJSON:        "以机器可读的 JSON 输出到 stdout（不显示进度界面）",
+	FlagPort:        "自定义 TCP 端口连通性测试，以逗号分隔（如 443,22）",
+	FlagPortOnly:    "仅输出 DNS 解析及端口连通性测试结果（如 443,22）",
 
 	UpdateChecking: "当前版本: %s，正在检查更新...\n",
 	UpdateFailed:   "更新失败:",
@@ -163,6 +184,13 @@ var zh = &Messages{
 	CatCustom:      "自定义",
 	SystemDNSName:  "当前默认 DNS",
 	SystemDNSNameN: "当前默认 DNS %d",
+
+	ResolveHeader: "\n--- IP 端口连通性测试 ---",
+	ResolveCol:    []string{"#", "DNS 服务器", "域名", "分类", "解析 IP"},
+	PortHeader:    "\n--- 端口连通性测试 ---",
+	PortCol:       []string{"#", "IP 地址", "域名", "端口", "延迟"},
+	PortOK:        "✔",
+	PortFail:      "✗",
 }
 
 // active is the currently selected catalog. Defaults to English so that code

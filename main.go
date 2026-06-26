@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,8 @@ var (
 	noSystemDNS      bool
 	langFlag         string
 	jsonOutput       bool
+	portStr          string
+	portOnlyStr      string
 )
 
 var rootCmd = &cobra.Command{
@@ -66,6 +69,8 @@ func setup() {
 	flags.BoolVar(&noSystemDNS, "no-system-dns", false, m.FlagNoSystemDNS)
 	flags.StringVar(&langFlag, "lang", "", m.FlagLang)
 	flags.BoolVar(&jsonOutput, "json", false, m.FlagJSON)
+	flags.StringVar(&portStr, "port", "", m.FlagPort)
+	flags.StringVar(&portOnlyStr, "port-only", "", m.FlagPortOnly)
 
 	rootCmd.AddCommand(versionCmd, updateCmd)
 }
@@ -91,6 +96,13 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 func runBenchmark(cmd *cobra.Command, args []string) error {
 	m := i18n.L()
 
+	// Parse port lists: --port-only implies --port and skips benchmark output.
+	portOnly := cmd.Flags().Changed("port-only")
+	ports := parsePorts(portStr)
+	if portOnly {
+		ports = parsePorts(portOnlyStr)
+	}
+
 	// Domains: use the custom list when -d is given (classified as Custom),
 	// otherwise fall back to the built-in categorized list.
 	domains := dnsbench.DefaultDomains
@@ -115,6 +127,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 		Queries:     queriesPerDomain,
 		Timeout:     queryTimeout,
 		Concurrency: maxConcurrency,
+		Ports:       ports,
 	}
 
 	// JSON mode: stdout carries only the JSON document, status goes to stderr,
@@ -132,11 +145,16 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	results := dnsbench.Run(opts, tracker.Progress)
 	tracker.Stop()
 
-	fmt.Println(m.ResultsHeader)
-	ui.PrintResultsTable(results)
+	// If --port-only is set, skip the benchmark results and recommendations.
+	if !portOnly {
+		fmt.Println(m.ResultsHeader)
+		ui.PrintResultsTable(results)
 
-	fmt.Println(m.RecommendHeader)
-	ui.PrintRecommendations(results)
+		fmt.Println(m.RecommendHeader)
+		ui.PrintRecommendations(results)
+	}
+
+	ui.PrintResolutions(results, ports)
 	return nil
 }
 
@@ -167,4 +185,30 @@ func langFromArgs(args []string) string {
 		}
 	}
 	return ""
+}
+
+// parsePorts splits a comma-separated port list, parses each as an integer,
+// deduplicates, and returns them. Invalid entries are silently skipped.
+func parsePorts(s string) []int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	seen := make(map[int]struct{})
+	var ports []int
+	for _, tok := range strings.Split(s, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		p, err := strconv.Atoi(tok)
+		if err != nil || p <= 0 || p > 65535 {
+			continue
+		}
+		if _, ok := seen[p]; !ok {
+			seen[p] = struct{}{}
+			ports = append(ports, p)
+		}
+	}
+	return ports
 }

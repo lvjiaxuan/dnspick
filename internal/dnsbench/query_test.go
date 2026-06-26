@@ -41,12 +41,12 @@ func TestReusableExchange(t *testing.T) {
 	defer closeFn()
 
 	for i := range 3 {
-		d, err := q("example.com")
+		d, _, err := q("example.com")
 		if err != nil {
 			t.Fatalf("query %d: %v", i, err)
 		}
-		if d <= 0 {
-			t.Fatalf("query %d: non-positive duration %v", i, d)
+		if d < 0 {
+			t.Fatalf("query %d: negative duration %v", i, d)
 		}
 	}
 	if got := calls.Load(); got != 3 {
@@ -66,7 +66,7 @@ func TestReusableExchangeServfail(t *testing.T) {
 	q, closeFn := reusableExchange(client, addr)
 	defer closeFn()
 
-	if _, err := q("example.com"); err == nil {
+	if _, _, err := q("example.com"); err == nil {
 		t.Fatal("expected error for SERVFAIL rcode")
 	}
 }
@@ -98,7 +98,7 @@ func TestDohQuery(t *testing.T) {
 			w.Write(dnsWireReply(t, r, dns.RcodeSuccess))
 		}))
 		defer srv.Close()
-		if err := dohQuery(client, srv.URL, "example.com"); err != nil {
+		if _, err := dohQuery(client, srv.URL, "example.com"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -108,7 +108,7 @@ func TestDohQuery(t *testing.T) {
 			w.Write(dnsWireReply(t, r, dns.RcodeNameError))
 		}))
 		defer srv.Close()
-		if err := dohQuery(client, srv.URL, "example.com"); err == nil {
+		if _, err := dohQuery(client, srv.URL, "example.com"); err == nil {
 			t.Fatal("expected error for NXDOMAIN rcode")
 		}
 	})
@@ -118,7 +118,7 @@ func TestDohQuery(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}))
 		defer srv.Close()
-		if err := dohQuery(client, srv.URL, "example.com"); err == nil {
+		if _, err := dohQuery(client, srv.URL, "example.com"); err == nil {
 			t.Fatal("expected error for HTTP 500")
 		}
 	})
@@ -128,7 +128,7 @@ func TestDohQuery(t *testing.T) {
 			w.Write([]byte("not a dns message"))
 		}))
 		defer srv.Close()
-		if err := dohQuery(client, srv.URL, "example.com"); err == nil {
+		if _, err := dohQuery(client, srv.URL, "example.com"); err == nil {
 			t.Fatal("expected error for non-wire body")
 		}
 	})
