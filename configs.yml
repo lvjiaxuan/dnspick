@@ -99,46 +99,5 @@ servers:
   #   protocol: doh
 
 domains:
-  # ── 国内 ──
-  # - name: "baidu.com"
-  #   category: domestic
-  # - name: "qq.com"
-  #   category: domestic
-  # - name: "taobao.com"
-  #   category: domestic
-  # - name: "jd.com"
-  #   category: domestic
-  # - name: "bilibili.com"
-  #   category: domestic
-  # - name: "douyin.com"
-  #   category: domestic
-  # - name: "weibo.com"
-  #   category: domestic
-  # - name: "163.com"
-  #   category: domestic
-  # - name: "zhihu.com"
-  #   category: domestic
-  # - name: "aliyun.com"
-  #   category: domestic
-
-  # ── 国外 ──
-  # - name: "google.com"
-  #   category: foreign
-  # - name: "youtube.com"
-  #   category: foreign
   - name: "github.com"
-    category: foreign
-  # - name: "facebook.com"
-  #   category: foreign
-  # - name: "x.com"
-  #   category: foreign
-  # - name: "apple.com"
-  #   category: foreign
-  # - name: "chatgpt.com"
-  #   category: foreign
-  # - name: "bing.com"
-  #   category: foreign
-  # - name: "tiktok.com"
-  #   category: foreign
-  # - name: "cloudflare.com"
-  #   category: foreign
+    category: foreign # custom

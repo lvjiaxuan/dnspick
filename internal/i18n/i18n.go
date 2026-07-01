@@ -77,12 +77,14 @@ type Messages struct {
 	SystemDNSNameN string // "Current default DNS %d"
 
 	// resolution details & port connectivity.
-	ResolveHeader string   // section header for DNS resolution details
-	ResolveCol    []string // DNS Server, Domain, Category, Resolved IPs
-	PortHeader    string   // section header for port 443 connectivity
-	PortCol       []string // IP Address, Port 443, Latency
-	PortOK        string   // "✔"
-	PortFail      string   // "✗"
+	ResolveHeader   string   // section header for DNS resolution details
+	ResolveCol      []string // DNS Server, Domain, Category, Resolved IPs
+	PortHeader      string   // section header for port 443 connectivity
+	PortCol         []string // IP Address, Port 443, Latency
+	PortOK          string   // "✔"
+	PortFail        string   // "✗"
+	PortFailSummary string   // "✗ %d connections failed"
+	PortAllFailed   string   // "✗ %s: all connections failed"
 
 	// hosts file write.
 	HostsWritten  string // "✓ Wrote %d entries to %s\n"
@@ -139,12 +141,14 @@ var en = &Messages{
 	SystemDNSName:  "Current default DNS",
 	SystemDNSNameN: "Current default DNS %d",
 
-	ResolveHeader: "\n--- IP Port Connectivity Test ---",
-	ResolveCol:    []string{"#", "DNS Server", "Domain", "Category", "Resolved IPs"},
-	PortHeader:    "\n--- Port Connectivity ---",
-	PortCol:       []string{"#", "IP Address", "Domain", "Port", "Latency"},
-	PortOK:        "✔",
-	PortFail:      "✗",
+	ResolveHeader:   "\n--- IP Port Connectivity Test ---",
+	ResolveCol:      []string{"#", "DNS Server", "Domain", "Category", "Resolved IPs"},
+	PortHeader:      "\n--- Port Connectivity ---",
+	PortCol:         []string{"#", "IP Address", "Domain", "Port", "Latency"},
+	PortOK:          "✔",
+	PortFail:        "✗",
+	PortFailSummary: "✗ %d connections failed",
+	PortAllFailed:   "✗ %s: all connections failed",
 
 	HostsWritten: "✓ Wrote %d entries to %s\n",
 	HostsNoData:  "No port connectivity data available, skipping hosts file write.\n",
@@ -200,12 +204,14 @@ var zh = &Messages{
 	SystemDNSName:  "当前默认 DNS",
 	SystemDNSNameN: "当前默认 DNS %d",
 
-	ResolveHeader: "\n--- IP 端口连通性测试 ---",
-	ResolveCol:    []string{"#", "DNS 服务器", "域名", "分类", "解析 IP"},
-	PortHeader:    "\n--- 端口连通性测试 ---",
-	PortCol:       []string{"#", "IP 地址", "域名", "端口", "延迟"},
-	PortOK:        "✔",
-	PortFail:      "✗",
+	ResolveHeader:   "\n--- IP 端口连通性测试 ---",
+	ResolveCol:      []string{"#", "DNS 服务器", "域名", "分类", "解析 IP"},
+	PortHeader:      "\n--- 端口连通性测试 ---",
+	PortCol:         []string{"#", "IP 地址", "域名", "端口", "延迟"},
+	PortOK:          "✔",
+	PortFail:        "✗",
+	PortFailSummary: "✗ %d 项连接失败",
+	PortAllFailed:   "✗ %s: 所有连接均失败",
 
 	HostsWritten: "✓ 已写入 %d 条记录到 %s\n",
 	HostsNoData:  "没有端口连通性数据，跳过 hosts 文件写入。\n",

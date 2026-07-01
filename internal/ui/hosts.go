@@ -1,11 +1,14 @@
 package ui
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"net"
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/palemoky/dnspick/internal/dnsbench"
@@ -18,6 +21,43 @@ func hostsFilePath() string {
 		return `C:\Windows\System32\drivers\etc\hosts`
 	}
 	return "/etc/hosts"
+}
+
+// stripDnspickBlocks removes all previously written dnspick sections from
+// the given hosts file content. A dnspick section starts with a line
+// containing "# --- dnspick start" and ends with "# --- dnspick end ---".
+// The leading blank line before a start marker (if any) is also removed.
+func stripDnspickBlocks(content []byte) []byte {
+	var buf bytes.Buffer
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	inBlock := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !inBlock && strings.HasPrefix(line, "# --- dnspick start") {
+			inBlock = true
+			// Trim the trailing blank line we may have just written.
+			b := buf.Bytes()
+			if len(b) > 0 && b[len(b)-1] == '\n' {
+				// Check if the last line is blank.
+				lastNL := bytes.LastIndexByte(b[:len(b)-1], '\n')
+				if lastNL >= 0 && bytes.TrimSpace(b[lastNL+1:len(b)-1]) == nil {
+					buf.Truncate(lastNL + 1)
+				} else if bytes.TrimSpace(b) == nil {
+					buf.Reset()
+				}
+			}
+			continue
+		}
+		if inBlock {
+			if strings.HasPrefix(line, "# --- dnspick end") {
+				inBlock = false
+			}
+			continue
+		}
+		buf.WriteString(line)
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes()
 }
 
 // WriteHostsFile writes the lowest-latency IP per domain to the system hosts
@@ -70,24 +110,35 @@ func WriteHostsFile(results []dnsbench.Result, ports []int) error {
 	path := hostsFilePath()
 	now := time.Now().Format("2006-01-02 15:04:05")
 
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
+	// Read existing content and strip old dnspick blocks.
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	defer f.Close()
+	cleaned := stripDnspickBlocks(existing)
 
-	// Write a section separator.
-	fmt.Fprintf(f, "\n# --- dnspick start %s ---\n", now)
+	// Build the new dnspick block.
+	var block bytes.Buffer
+	fmt.Fprintf(&block, "\n# --- dnspick start %s ---\n", now)
 
 	count := 0
 	for _, entry := range bestPerDomain {
 		latencyStr := entry.latency.Round(time.Millisecond).String()
-		fmt.Fprintf(f, "# %s latency %s %s\n", entry.ip, latencyStr, now)
-		fmt.Fprintf(f, "%s %s\n", entry.ip, entry.domain)
+		fmt.Fprintf(&block, "# %s latency %s %s\n", entry.ip, latencyStr, now)
+		fmt.Fprintf(&block, "%s %s\n", entry.ip, entry.domain)
 		count++
 	}
 
-	fmt.Fprintf(f, "# --- dnspick end ---\n")
+	fmt.Fprintf(&block, "# --- dnspick end ---\n")
+
+	// Write cleaned content + new block atomically.
+	var out bytes.Buffer
+	out.Write(cleaned)
+	out.Write(block.Bytes())
+
+	if err := os.WriteFile(path, out.Bytes(), 0644); err != nil {
+		return err
+	}
 
 	fmt.Fprintf(os.Stderr, m.HostsWritten, count, path)
 	return nil

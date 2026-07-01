@@ -422,8 +422,9 @@ func PrintResolutions(results []dnsbench.Result, ports []int) {
 		}
 	}
 
-	// Output rows grouped by server and domain.
+	// Output rows grouped by server and domain (only successful port connections).
 	firstServer := true
+	totalFailCount := 0
 	for _, serverName := range serverOrder {
 		data := serverDataMap[serverName]
 		domains := data.Domains
@@ -436,6 +437,38 @@ func PrintResolutions(results []dnsbench.Result, ports []int) {
 			}
 		}
 
+		// Skip servers with no resolved domains at all.
+		if len(finalDomains) == 0 {
+			continue
+		}
+
+		// Check if this server has any successful connections and count failures.
+		serverHasSuccess := false
+		for _, domain := range finalDomains {
+			ipKeys := domains[domain]
+			for _, ipKey := range ipKeys {
+				found := false
+				var prOK bool
+				for _, r := range results {
+					if pr, ok := r.PortResults[ipKey]; ok {
+						found = true
+						prOK = pr.OK
+						break
+					}
+				}
+				if !found || !prOK {
+					totalFailCount++
+				} else {
+					serverHasSuccess = true
+				}
+			}
+		}
+
+		// Only add separator and render rows if there are successful connections.
+		if !serverHasSuccess {
+			continue
+		}
+
 		// Print a visible line before each server (except the first).
 		if !firstServer {
 			sep := make([]string, len(colWidths)-colStart)
@@ -446,41 +479,31 @@ func PrintResolutions(results []dnsbench.Result, ports []int) {
 		}
 		firstServer = false
 
-		// Servers with no successful resolutions: show a single error row.
-		if len(finalDomains) == 0 {
-			mergedTable.Append([]string{
-				serverName,
-				data.Address,
-				"-",
-				red(m.AllFailed),
-				"-",
-				"-",
-			}[colStart:])
-			continue
-		}
-
 		firstRowForServer := true
 		for _, domain := range finalDomains {
 			ipKeys := domains[domain]
 			bestKey := bestIPPerDomain[domain]
 
-			for idx, ipKey := range ipKeys {
-				status := "-"
-				latency := "-"
+			firstSuccessForDomain := true
+			for _, ipKey := range ipKeys {
 				isBestIP := (ipKey == bestKey)
 
-				// Get port result for this IP:port key
+				// Look up port result; skip failed/missing entries.
+				var prOK bool
+				var prDuration time.Duration
 				for _, r := range results {
 					if pr, ok := r.PortResults[ipKey]; ok {
-						if pr.OK {
-							status = m.PortOK
-							latency = pr.Duration.Round(time.Millisecond).String()
-						} else {
-							status = red(m.PortFail)
-						}
+						prOK = pr.OK
+						prDuration = pr.Duration
 						break
 					}
 				}
+				if !prOK {
+					continue
+				}
+
+				status := m.PortOK
+				latency := prDuration.Round(time.Millisecond).String()
 
 				// Prepare cell values
 				serverCell := ""
@@ -492,15 +515,16 @@ func PrintResolutions(results []dnsbench.Result, ports []int) {
 				}
 
 				domainCell := ""
-				if idx == 0 {
+				if firstSuccessForDomain {
 					domainCell = domain
+					firstSuccessForDomain = false
 				}
 
 				ipCell := ipKey
 				statusCell := status
 				latencyCell := latency
 
-				// Highlight best IP row: IP, Domain, and DNS Server columns
+				// Highlight best IP row: IP, status, and latency columns
 				if isBestIP {
 					ipCell = green(ipCell)
 					statusCell = green(statusCell)
@@ -517,8 +541,12 @@ func PrintResolutions(results []dnsbench.Result, ports []int) {
 				}[colStart:])
 			}
 		}
-
 	}
 
 	mergedTable.Render()
+
+	// Print failure summary as text below the table.
+	if totalFailCount > 0 {
+		fmt.Println(red(fmt.Sprintf(m.PortFailSummary, totalFailCount)))
+	}
 }
