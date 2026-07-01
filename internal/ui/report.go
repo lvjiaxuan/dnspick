@@ -249,7 +249,7 @@ const resolveTableLimit = 10
 
 // showDNSServerCol controls whether the "DNS Server" column is displayed
 // in the merged resolution table. Set to true to enable.
-const showDNSServerCol = false
+const showDNSServerCol = true
 
 // PrintResolutions prints the DNS resolution details and port connectivity
 // test results in a merged table. The table is grouped by DNS server, then by domain,

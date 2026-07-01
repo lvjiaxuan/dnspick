@@ -1,0 +1,144 @@
+# dnspick 配置文件
+# 取消注释即可启用对应条目
+
+servers:
+  # ── UDP ──
+  # - name: "AliDNS 1 (UDP)"
+  #   address: "223.5.5.5"
+  #   protocol: udp
+  # - name: "AliDNS 2 (UDP)"
+  #   address: "223.6.6.6"
+  #   protocol: udp
+  # - name: "BaiduDNS (UDP)"
+  #   address: "180.76.76.76"
+  #   protocol: udp
+  # - name: "DNSPod 1 (UDP)"
+  #   address: "119.28.28.28"
+  #   protocol: udp
+  # - name: "DNSPod 2 (UDP)"
+  #   address: "119.29.29.29"
+  #   protocol: udp
+  # - name: "114DNS 1 (UDP)"
+  #   address: "114.114.114.114"
+  #   protocol: udp
+  # - name: "114DNS 2 (UDP)"
+  #   address: "114.114.115.115"
+  #   protocol: udp
+  # - name: "Bytedance 1 (UDP)"
+  #   address: "180.184.1.1"
+  #   protocol: udp
+  # - name: "Bytedance 2 (UDP)"
+  #   address: "180.184.2.2"
+  #   protocol: udp
+  # - name: "OneDNS 1 (UDP)"
+  #   address: "117.50.10.10"
+  #   protocol: udp
+  # - name: "OneDNS 2 (UDP)"
+  #   address: "52.80.52.52"
+  #   protocol: udp
+  # - name: "Google 1 (UDP)"
+  #   address: "8.8.8.8"
+  #   protocol: udp
+  # - name: "Google 2 (UDP)"
+  #   address: "8.8.4.4"
+  #   protocol: udp
+  # - name: "Cloudflare 1 (UDP)"
+  #   address: "1.1.1.1"
+  #   protocol: udp
+  # - name: "Cloudflare 2 (UDP)"
+  #   address: "1.0.0.1"
+  #   protocol: udp
+  # - name: "OpenDNS 1 (UDP)"
+  #   address: "208.67.222.222"
+  #   protocol: udp
+  # - name: "OpenDNS 2 (UDP)"
+  #   address: "208.67.220.220"
+  #   protocol: udp
+  # - name: "Quad9 (UDP)"
+  #   address: "9.9.9.9"
+  #   protocol: udp
+  - name: "Tokyo Japan"
+    address: "54.64.107.105"
+    protocol: udp
+  - name: "Hong Kong 1"
+    address: "23.56.160.9"
+    protocol: udp
+
+  # ── DoT ──
+  # - name: "AliDNS (DoT)"
+  #   address: "dns.alidns.com"
+  #   protocol: dot
+  # - name: "DNSPod (DoT)"
+  #   address: "dot.pub"
+  #   protocol: dot
+  # - name: "Google (DoT)"
+  #   address: "dns.google"
+  #   protocol: dot
+  # - name: "Cloudflare (DoT)"
+  #   address: "one.one.one.one"
+  #   protocol: dot
+  # - name: "Quad9 (DoT)"
+  #   address: "dns.quad9.net"
+  #   protocol: dot
+
+  # ── DoH（均使用 RFC 8484 /dns-query 端点）──
+  # - name: "AliDNS (DoH)"
+  #   address: "https://dns.alidns.com/dns-query"
+  #   protocol: doh
+  # - name: "DNSPod (DoH)"
+  #   address: "https://doh.pub/dns-query"
+  #   protocol: doh
+  # - name: "Cloudflare (DoH)"
+  #   address: "https://cloudflare-dns.com/dns-query"
+  #   protocol: doh
+  # - name: "Google (DoH)"
+  #   address: "https://dns.google/dns-query"
+  #   protocol: doh
+  # - name: "Quad9 (DoH)"
+  #   address: "https://dns.quad9.net/dns-query"
+  #   protocol: doh
+
+domains:
+  # ── 国内 ──
+  # - name: "baidu.com"
+  #   category: domestic
+  # - name: "qq.com"
+  #   category: domestic
+  # - name: "taobao.com"
+  #   category: domestic
+  # - name: "jd.com"
+  #   category: domestic
+  # - name: "bilibili.com"
+  #   category: domestic
+  # - name: "douyin.com"
+  #   category: domestic
+  # - name: "weibo.com"
+  #   category: domestic
+  # - name: "163.com"
+  #   category: domestic
+  # - name: "zhihu.com"
+  #   category: domestic
+  # - name: "aliyun.com"
+  #   category: domestic
+
+  # ── 国外 ──
+  # - name: "google.com"
+  #   category: foreign
+  # - name: "youtube.com"
+  #   category: foreign
+  - name: "github.com"
+    category: foreign
+  # - name: "facebook.com"
+  #   category: foreign
+  # - name: "x.com"
+  #   category: foreign
+  # - name: "apple.com"
+  #   category: foreign
+  # - name: "chatgpt.com"
+  #   category: foreign
+  # - name: "bing.com"
+  #   category: foreign
+  # - name: "tiktok.com"
+  #   category: foreign
+  # - name: "cloudflare.com"
+  #   category: foreign

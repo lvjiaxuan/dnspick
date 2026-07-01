@@ -36,6 +36,7 @@ type Messages struct {
 	FlagJSON        string
 	FlagPort        string
 	FlagPortOnly    string
+	FlagWrite       string
 
 	// update command.
 	UpdateChecking string // "Current version: %s, checking for updates...\n"
@@ -82,6 +83,11 @@ type Messages struct {
 	PortCol       []string // IP Address, Port 443, Latency
 	PortOK        string   // "✔"
 	PortFail      string   // "✗"
+
+	// hosts file write.
+	HostsWritten  string // "✓ Wrote %d entries to %s\n"
+	HostsNoData   string // "No port connectivity data available, skipping hosts file write.\n"
+	HostsFailed   string // "Failed to write hosts file: %s\n"
 }
 
 var en = &Messages{
@@ -99,6 +105,7 @@ var en = &Messages{
 	FlagJSON:        "Output machine-readable JSON to stdout (suppresses the progress UI)",
 	FlagPort:        "Comma-separated ports to test TCP connectivity for resolved IPs (e.g. 443,22)",
 	FlagPortOnly:    "Only output DNS resolution and port connectivity test results (e.g. 443,22)",
+	FlagWrite:       "Write the lowest-latency IP per domain to the system hosts file",
 
 	UpdateChecking: "Current version: %s, checking for updates...\n",
 	UpdateFailed:   "update failed:",
@@ -138,6 +145,10 @@ var en = &Messages{
 	PortCol:       []string{"#", "IP Address", "Domain", "Port", "Latency"},
 	PortOK:        "✔",
 	PortFail:      "✗",
+
+	HostsWritten: "✓ Wrote %d entries to %s\n",
+	HostsNoData:  "No port connectivity data available, skipping hosts file write.\n",
+	HostsFailed:  "Failed to write hosts file: %s\n",
 }
 
 var zh = &Messages{
@@ -155,6 +166,7 @@ var zh = &Messages{
 	FlagJSON:        "以机器可读的 JSON 输出到 stdout（不显示进度界面）",
 	FlagPort:        "自定义 TCP 端口连通性测试，以逗号分隔（如 443,22）",
 	FlagPortOnly:    "仅输出 DNS 解析及端口连通性测试结果（如 443,22）",
+	FlagWrite:       "将每个域名延迟最低的 IP 写入系统 hosts 文件",
 
 	UpdateChecking: "当前版本: %s，正在检查更新...\n",
 	UpdateFailed:   "更新失败:",
@@ -194,6 +206,10 @@ var zh = &Messages{
 	PortCol:       []string{"#", "IP 地址", "域名", "端口", "延迟"},
 	PortOK:        "✔",
 	PortFail:      "✗",
+
+	HostsWritten: "✓ 已写入 %d 条记录到 %s\n",
+	HostsNoData:  "没有端口连通性数据，跳过 hosts 文件写入。\n",
+	HostsFailed:  "写入 hosts 文件失败: %s\n",
 }
 
 // active is the currently selected catalog. Defaults to English so that code

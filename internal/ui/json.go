@@ -3,6 +3,8 @@ package ui
 import (
 	"encoding/json"
 	"io"
+	"net"
+	"strconv"
 	"time"
 
 	"github.com/palemoky/dnspick/internal/dnsbench"
@@ -11,7 +13,7 @@ import (
 // jsonSchemaVersion is the version of the --json document structure. It is the
 // stability contract for automated consumers: bump it on any backward-incompatible
 // change so they can guard on it.
-const jsonSchemaVersion = 2
+const jsonSchemaVersion = 3
 
 // jsonReport is the top-level machine-readable benchmark output.
 type jsonReport struct {
@@ -21,21 +23,39 @@ type jsonReport struct {
 	DomainsTested    int                `json:"domains_tested"`
 	Results          []jsonResult       `json:"results"`
 	Recommendation   jsonRecommendation `json:"recommendation"`
+	Ports            []int              `json:"ports,omitempty"`
+	PortResults      []jsonPortResult   `json:"port_results,omitempty"`
 }
 
 // jsonResult is a single server's result. Latency is expressed in milliseconds
 // (rounded to microsecond precision) so consumers needn't parse Go durations.
 type jsonResult struct {
-	Rank         int               `json:"rank"`
-	Name         string            `json:"name"`
-	Address      string            `json:"address"`
-	Protocol     dnsbench.Protocol `json:"protocol"`
-	IsSystem     bool              `json:"is_system"`
-	AvgLatencyMs float64           `json:"avg_latency_ms"`
-	SuccessRate  float64           `json:"success_rate"`
-	Successes    int               `json:"successes"`
-	Total        int               `json:"total"`
-	Score        float64           `json:"score"`
+	Rank         int                `json:"rank"`
+	Name         string             `json:"name"`
+	Address      string             `json:"address"`
+	Protocol     dnsbench.Protocol  `json:"protocol"`
+	IsSystem     bool               `json:"is_system"`
+	AvgLatencyMs float64            `json:"avg_latency_ms"`
+	SuccessRate  float64            `json:"success_rate"`
+	Successes    int                `json:"successes"`
+	Total        int                `json:"total"`
+	Score        float64            `json:"score"`
+	Resolutions  []jsonResolution   `json:"resolutions,omitempty"`
+}
+
+// jsonResolution is a single domain's resolution result for a DNS server.
+type jsonResolution struct {
+	Domain   string   `json:"domain"`
+	IPs      []string `json:"ips"`
+	Category string   `json:"category"`
+}
+
+// jsonPortResult is the TCP port connectivity test result for a single IP:port.
+type jsonPortResult struct {
+	IP         string  `json:"ip"`
+	Port       int     `json:"port"`
+	OK         bool    `json:"ok"`
+	LatencyMs  float64 `json:"latency_ms,omitempty"`
 }
 
 type jsonRecommendation struct {
@@ -65,18 +85,28 @@ type jsonSystemVerdict struct {
 }
 
 // WriteJSON serializes the benchmark results as indented JSON to w. domains is the
-// number of domains tested; the rest of the metadata is derived from results,
-// which must be sorted by score in descending order.
-func WriteJSON(w io.Writer, results []dnsbench.Result, queriesPerDomain, domains int) error {
+// number of domains tested; ports is the list of TCP ports tested for connectivity;
+// the rest of the metadata is derived from results, which must be sorted by score
+// in descending order.
+func WriteJSON(w io.Writer, results []dnsbench.Result, queriesPerDomain, domains int, ports []int) error {
 	rep := jsonReport{
 		Schema:           jsonSchemaVersion,
 		QueriesPerDomain: queriesPerDomain,
 		ServersTested:    len(results),
 		DomainsTested:    domains,
 		Results:          make([]jsonResult, len(results)),
+		Ports:            ports,
 	}
 
 	for i, r := range results {
+		var resolutions []jsonResolution
+		for _, res := range r.Resolutions {
+			resolutions = append(resolutions, jsonResolution{
+				Domain:   res.Domain,
+				IPs:      res.IPs,
+				Category: res.Category,
+			})
+		}
 		rep.Results[i] = jsonResult{
 			Rank:         i + 1,
 			Name:         r.Name,
@@ -88,6 +118,36 @@ func WriteJSON(w io.Writer, results []dnsbench.Result, queriesPerDomain, domains
 			Successes:    r.Successes,
 			Total:        r.Total,
 			Score:        r.Score,
+			Resolutions:  resolutions,
+		}
+	}
+
+	// Build deduplicated port_results from the shared PortResults map.
+	if len(ports) > 0 && len(results) > 0 && len(results[0].PortResults) > 0 {
+		seen := make(map[string]struct{})
+		for _, r := range results {
+			for _, res := range r.Resolutions {
+				for _, ip := range res.IPs {
+					for _, port := range ports {
+						key := net.JoinHostPort(ip, strconv.Itoa(port))
+						if _, ok := seen[key]; ok {
+							continue
+						}
+						seen[key] = struct{}{}
+						if pr, ok := r.PortResults[key]; ok {
+							jr := jsonPortResult{
+								IP:   ip,
+								Port: port,
+								OK:   pr.OK,
+							}
+							if pr.OK {
+								jr.LatencyMs = latencyMs(pr.Duration)
+							}
+							rep.PortResults = append(rep.PortResults, jr)
+						}
+					}
+				}
+			}
 		}
 	}
 

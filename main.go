@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"strconv"
@@ -17,6 +18,9 @@ import (
 	"github.com/palemoky/dnspick/internal/updater"
 )
 
+//go:embed configs.yml
+var embeddedConfig []byte
+
 var (
 	domainsStr       string
 	queriesPerDomain int
@@ -27,6 +31,7 @@ var (
 	jsonOutput       bool
 	portStr          string
 	portOnlyStr      string
+	writeHosts       bool
 )
 
 var rootCmd = &cobra.Command{
@@ -71,6 +76,7 @@ func setup() {
 	flags.BoolVar(&jsonOutput, "json", false, m.FlagJSON)
 	flags.StringVar(&portStr, "port", "", m.FlagPort)
 	flags.StringVar(&portOnlyStr, "port-only", "", m.FlagPortOnly)
+	flags.BoolVarP(&writeHosts, "write", "w", false, m.FlagWrite)
 
 	rootCmd.AddCommand(versionCmd, updateCmd)
 }
@@ -135,7 +141,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	if jsonOutput {
 		fmt.Fprintf(os.Stderr, m.BenchStarting, len(servers), len(domains))
 		results := dnsbench.Run(opts, nil)
-		return ui.WriteJSON(os.Stdout, results, queriesPerDomain, len(domains))
+		return ui.WriteJSON(os.Stdout, results, queriesPerDomain, len(domains), ports)
 	}
 
 	fmt.Printf(m.BenchStarting, len(servers), len(domains))
@@ -155,10 +161,23 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	}
 
 	ui.PrintResolutions(results, ports)
+
+	if writeHosts {
+		if err := ui.WriteHostsFile(results, ports); err != nil {
+			fmt.Fprintf(os.Stderr, m.HostsFailed, err)
+		}
+	}
+
 	return nil
 }
 
 func main() {
+	// Load servers/domains from configs.yml (embedded at compile time).
+	if err := dnsbench.LoadConfig(embeddedConfig); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
 	// Resolve the language before building commands so that help text honors
 	// --lang. Cobra renders help without running PreRun hooks, so the flag is
 	// scanned manually here from the raw arguments.

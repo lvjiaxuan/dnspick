@@ -24,7 +24,7 @@ func TestWriteJSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteJSON(&buf, results, 3, 2); err != nil {
+	if err := WriteJSON(&buf, results, 3, 2, nil); err != nil {
 		t.Fatalf("WriteJSON: %v", err)
 	}
 
@@ -74,5 +74,84 @@ func TestLatencyMs(t *testing.T) {
 		if got := latencyMs(tt.d); got != tt.want {
 			t.Errorf("latencyMs(%v) = %v, want %v", tt.d, got, tt.want)
 		}
+	}
+}
+
+func TestWriteJSON_WithResolutionsAndPorts(t *testing.T) {
+	portResults := map[string]dnsbench.PortResult{
+		"10.0.0.1:443": {Port: 443, Duration: 50 * time.Millisecond, OK: true},
+		"10.0.0.2:443": {Port: 443, Duration: 0, OK: false},
+	}
+	results := []dnsbench.Result{
+		{
+			Name: "Fast", Address: "1.1.1.1", Protocol: dnsbench.UDP,
+			AvgTime: 10 * time.Millisecond, SuccessRate: 1.0,
+			Successes: 3, Total: 3, Score: 100,
+			Resolutions: []dnsbench.Resolution{
+				{Domain: "example.com", IPs: []string{"10.0.0.1"}, Category: "foreign"},
+			},
+			PortResults: portResults,
+		},
+		{
+			Name: "Slow", Address: "2.2.2.2", Protocol: dnsbench.UDP,
+			AvgTime: 50 * time.Millisecond, SuccessRate: 1.0,
+			Successes: 3, Total: 3, Score: 10, IsSystem: true,
+			Resolutions: []dnsbench.Resolution{
+				{Domain: "example.com", IPs: []string{"10.0.0.2"}, Category: "foreign"},
+			},
+			PortResults: portResults,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, results, 3, 1, []int{443}); err != nil {
+		t.Fatalf("WriteJSON: %v", err)
+	}
+
+	var doc map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, buf.String())
+	}
+
+	// Schema version should be 3.
+	if v, ok := doc["schema"].(float64); !ok || int(v) != jsonSchemaVersion {
+		t.Errorf("schema = %v, want %d", doc["schema"], jsonSchemaVersion)
+	}
+
+	// ports should be present.
+	portsArr, ok := doc["ports"].([]any)
+	if !ok || len(portsArr) != 1 {
+		t.Fatalf("ports = %v, want [443]", doc["ports"])
+	}
+
+	// First result should have resolutions.
+	arr := doc["results"].([]any)
+	first := arr[0].(map[string]any)
+	resArr, ok := first["resolutions"].([]any)
+	if !ok || len(resArr) != 1 {
+		t.Fatalf("resolutions = %v, want 1-element array", first["resolutions"])
+	}
+	res := resArr[0].(map[string]any)
+	if res["domain"] != "example.com" {
+		t.Errorf("resolution domain = %v, want example.com", res["domain"])
+	}
+
+	// port_results should be present with 2 entries.
+	prArr, ok := doc["port_results"].([]any)
+	if !ok || len(prArr) != 2 {
+		t.Fatalf("port_results = %v, want 2-element array", doc["port_results"])
+	}
+	// First port result should be OK with latency.
+	pr := prArr[0].(map[string]any)
+	if pr["ok"] != true {
+		t.Errorf("first port_result ok = %v, want true", pr["ok"])
+	}
+	if pr["latency_ms"] == nil {
+		t.Error("first port_result should have latency_ms")
+	}
+	// Second port result should not be OK.
+	pr2 := prArr[1].(map[string]any)
+	if pr2["ok"] != false {
+		t.Errorf("second port_result ok = %v, want false", pr2["ok"])
 	}
 }
