@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/mod/semver"
+	"golang.org/x/term"
 
 	"github.com/lvjiaxuan/dnspick/internal/buildinfo"
+	"github.com/lvjiaxuan/dnspick/internal/console"
 	"github.com/lvjiaxuan/dnspick/internal/dnsbench"
 	"github.com/lvjiaxuan/dnspick/internal/i18n"
 	"github.com/lvjiaxuan/dnspick/internal/ui"
@@ -24,6 +27,7 @@ var embeddedConfig []byte
 
 var (
 	domainsStr       string
+	serversStr       string
 	queriesPerDomain int
 	queryTimeout     time.Duration
 	maxConcurrency   int
@@ -61,6 +65,12 @@ var updateCmd = &cobra.Command{
 func setup() {
 	m := i18n.L()
 
+	// Cobra's Windows "mousetrap" otherwise intercepts a double-click launch,
+	// prints "This is a command line tool..." and exits before the command
+	// runs. dnspick is meant to be usable by double-clicking, and the console
+	// is kept open afterwards by console.PauseOnExit, so disable the mousetrap.
+	cobra.MousetrapHelpText = ""
+
 	rootCmd.Short = m.CmdRootShort
 	rootCmd.Long = m.CmdRootLong
 	versionCmd.Short = m.CmdVersionShort
@@ -70,6 +80,7 @@ func setup() {
 
 	flags := rootCmd.PersistentFlags()
 	flags.StringVarP(&domainsStr, "domains", "d", "", m.FlagDomains)
+	flags.StringVarP(&serversStr, "servers", "s", "", m.FlagServers)
 	flags.IntVarP(&queriesPerDomain, "queries", "q", 3, m.FlagQueries)
 	flags.DurationVarP(&queryTimeout, "timeout", "t", 2*time.Second, m.FlagTimeout)
 	flags.IntVarP(&maxConcurrency, "concurrency", "c", 16, m.FlagConcurrency)
@@ -125,8 +136,15 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s", m.ErrNoDomains)
 	}
 
-	// Servers: built-in list + (unless disabled) the system default DNS.
+	// Servers: the custom list when -s is given, otherwise the built-in list;
+	// in both cases the system default DNS is appended unless disabled.
 	servers := dnsbench.DefaultServers
+	if cmd.Flags().Changed("servers") {
+		servers = dnsbench.ParseServers(serversStr)
+		if len(servers) == 0 {
+			return fmt.Errorf("%s", m.ErrNoServers)
+		}
+	}
 	if !noSystemDNS {
 		if sys := dnsbench.DetectSystemDNS(m.SystemDNSName, m.SystemDNSNameN); len(sys) > 0 {
 			servers = append(append([]dnsbench.Server{}, servers...), sys...)
@@ -204,6 +222,10 @@ func executeOnce(opts dnsbench.Options, ports []int, portOnly bool, round int, t
 		ui.FlushDNSCache()
 	}
 
+	// Kick off a non-blocking check for a newer release; it runs concurrently
+	// with the benchmark and the notice (if any) is printed at the end.
+	updateCh := startUpdateCheck()
+
 	fmt.Printf(m.BenchStarting, len(opts.Servers), len(opts.Domains))
 
 	tracker := ui.NewStatusTracker(opts.Domains, len(opts.Servers), queriesPerDomain)
@@ -226,9 +248,78 @@ func executeOnce(opts dnsbench.Options, ports []int, portOnly bool, round int, t
 		if err := ui.WriteHostsFile(results, ports); err != nil {
 			fmt.Fprintf(os.Stderr, m.HostsFailed, err)
 		}
+		ui.FlushDNSCache()
 	}
 
+	autoUpdate(updateCh)
 	return nil
+}
+
+// updateCheckTimeout bounds the background "is there a newer release?" check so a
+// slow or unreachable network never holds anything up for long.
+const updateCheckTimeout = 3 * time.Second
+
+// updateNoticeGrace is how long the final notice waits for a still-pending check
+// before giving up, so an unusually fast benchmark doesn't block on the network.
+const updateNoticeGrace = 1500 * time.Millisecond
+
+// startUpdateCheck launches a non-blocking check for a newer release and returns
+// a channel that yields the result (or nil on any error). It is skipped for
+// non-release builds (e.g. "dev"), which are never valid semver, so local builds
+// are not nagged on every run.
+func startUpdateCheck() <-chan *updater.CheckResult {
+	ch := make(chan *updater.CheckResult, 1)
+	if !semver.IsValid(buildinfo.Version) {
+		ch <- nil
+		return ch
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
+		defer cancel()
+		res, err := updater.Check(ctx, buildinfo.Version)
+		if err != nil {
+			ch <- nil
+			return
+		}
+		ch <- res
+	}()
+	return ch
+}
+
+// autoUpdate acts on the background update check. When a newer release is found
+// it prints a notice and updates in place automatically. In a non-interactive
+// context (piped/CI) it does not self-modify, printing a passive hint instead so
+// scripted runs stay reproducible. It waits at most updateNoticeGrace for a
+// still-pending check; a pending or failed check does nothing.
+func autoUpdate(ch <-chan *updater.CheckResult) {
+	var res *updater.CheckResult
+	select {
+	case res = <-ch:
+	case <-time.After(updateNoticeGrace):
+		return // check still running; don't block this run
+	}
+	if res == nil || !res.HasUpdate {
+		return
+	}
+
+	m := i18n.L()
+	// Non-interactive (piped/CI): just hint, never self-modify unprompted.
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		fmt.Printf(m.UpdateAvailable, res.Current, res.Latest, res.URL)
+		return
+	}
+
+	fmt.Printf(m.UpdateAutoNotice, res.Current, res.Latest)
+	ctx, cancel := context.WithTimeout(context.Background(), updater.DefaultTimeout)
+	defer cancel()
+	latest, updated, err := updater.Update(ctx, res.Current)
+	if err != nil {
+		fmt.Printf("%s %v\n", m.UpdateFailed, err)
+		return
+	}
+	if updated {
+		fmt.Printf(m.UpdateDone, latest)
+	}
 }
 
 func main() {
@@ -253,8 +344,19 @@ func main() {
 	i18n.Set(i18n.Detect(langFromArgs(os.Args[1:])))
 	setup()
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
 		fmt.Println(err)
+	}
+
+	// On Windows a double-click (or a launcher like Listary) gives the process
+	// its own console that closes the moment it exits, so the user never sees
+	// the results. Pause in that case, but not when --json is piped somewhere.
+	if !jsonOutput {
+		console.PauseOnExit()
+	}
+
+	if err != nil {
 		os.Exit(1)
 	}
 }

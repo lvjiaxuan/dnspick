@@ -28,6 +28,7 @@ type Messages struct {
 
 	// Flag usages.
 	FlagDomains     string
+	FlagServers     string
 	FlagQueries     string
 	FlagTimeout     string
 	FlagConcurrency string
@@ -40,13 +41,16 @@ type Messages struct {
 	FlagInterval    string
 
 	// update command.
-	UpdateChecking string // "Current version: %s, checking for updates...\n"
-	UpdateFailed   string // printed before the error detail
-	UpdateUpToDate string // "Already on the latest version (%s).\n"
-	UpdateDone     string // "✓ Updated to %s.\n"
+	UpdateAvailable  string // non-interactive startup hint: (current, latest, releaseURL)
+	UpdateAutoNotice string // interactive startup notice before auto-updating: (current, latest)
+	UpdateChecking   string // "Current version: %s, checking for updates...\n"
+	UpdateFailed     string // printed before the error detail
+	UpdateUpToDate   string // "Already on the latest version (%s).\n"
+	UpdateDone       string // "✓ Updated to %s.\n"
 
 	// benchmark run.
 	ErrNoDomains    string
+	ErrNoServers    string
 	BenchStarting   string // "...%d DNS servers ... %d domains...\n\n"
 	ResultsHeader   string
 	RecommendHeader string
@@ -102,6 +106,9 @@ type Messages struct {
 	NextRoundAt   string // "⏳ Next round in %s (%s) | Ctrl+C to exit"
 	PollStopped   string // "\n⏹ Polling stopped after %d rounds.\n"
 	PollRunNow    string // "\n⚡ Manual trigger: running next round immediately...\n"
+
+	// Windows double-click: pause before the console window closes.
+	PressEnterToExit string
 }
 
 var en = &Messages{
@@ -111,6 +118,7 @@ var en = &Messages{
 	CmdUpdateShort:  "Check for and update to the latest version",
 
 	FlagDomains:     "Comma-separated custom domains to test (defaults to the built-in domestic/foreign list)",
+	FlagServers:     "Comma-separated custom DNS servers to test, e.g. \"1.1.1.1, tls://dns.google, https://dns.google/dns-query, h3://cloudflare-dns.com/dns-query\" (defaults to the built-in list)",
 	FlagQueries:     "Number of queries per domain",
 	FlagTimeout:     "Timeout per query",
 	FlagConcurrency: "Maximum number of servers tested concurrently",
@@ -122,12 +130,15 @@ var en = &Messages{
 	FlagWrite:       "Write the lowest-latency IP per domain to the system hosts file",
 	FlagInterval:    "Polling interval in minutes; the program runs continuously, re-testing every n minutes (0 = single run)",
 
-	UpdateChecking: "Current version: %s, checking for updates...\n",
-	UpdateFailed:   "update failed:",
-	UpdateUpToDate: "Already on the latest version (%s).\n",
-	UpdateDone:     "✓ Updated to %s.\n",
+	UpdateAvailable:  "\n📦 A new version is available: %s → %s\n   Run 'dnspick update' to upgrade. Release notes: %s\n",
+	UpdateAutoNotice: "\n📦 A new version is available: %s → %s, updating automatically...\n",
+	UpdateChecking:   "Current version: %s, checking for updates...\n",
+	UpdateFailed:     "update failed:",
+	UpdateUpToDate:   "Already on the latest version (%s).\n",
+	UpdateDone:       "✓ Updated to %s.\n",
 
 	ErrNoDomains:    "error: no valid domains to test.",
+	ErrNoServers:    "error: no valid servers to test.",
 	BenchStarting:   "dnspick: benchmarking %d DNS servers against %d domains...\n\n",
 	ResultsHeader:   "\n--- Benchmark Results ---",
 	RecommendHeader: "\n--- Top 3 Recommendations ---",
@@ -176,6 +187,8 @@ var en = &Messages{
 	NextRoundAt:   "⏳ Next round in %s (%s) | Press u to run now | Ctrl+C to exit",
 	PollStopped:   "\n⏹ Polling stopped after %d rounds.\n",
 	PollRunNow:    "\n⚡ Manual trigger: running next round immediately...\n",
+
+	PressEnterToExit: "\nPress Enter to exit...",
 }
 
 var zh = &Messages{
@@ -185,6 +198,7 @@ var zh = &Messages{
 	CmdUpdateShort:  "检查并更新到最新版本",
 
 	FlagDomains:     "自定义测试域名列表，以逗号分隔（默认使用内置国内/国外域名）",
+	FlagServers:     "自定义 DNS 服务器列表，以逗号分隔，例如 \"1.1.1.1, tls://dns.google, https://dns.google/dns-query, h3://cloudflare-dns.com/dns-query\"（默认使用内置列表）",
 	FlagQueries:     "每个域名的查询次数",
 	FlagTimeout:     "单次查询超时时间",
 	FlagConcurrency: "同时测试的服务器数量上限",
@@ -196,12 +210,15 @@ var zh = &Messages{
 	FlagWrite:       "将每个域名延迟最低的 IP 写入系统 hosts 文件",
 	FlagInterval:    "轮询间隔（分钟），程序将持续运行，每隔 n 分钟重新执行一次测试（0 = 单次运行）",
 
-	UpdateChecking: "当前版本: %s，正在检查更新...\n",
-	UpdateFailed:   "更新失败:",
-	UpdateUpToDate: "已是最新版本 (%s)。\n",
-	UpdateDone:     "✓ 已更新到 %s。\n",
+	UpdateAvailable:  "\n📦 发现新版本：%s → %s\n   运行 'dnspick update' 升级。版本说明：%s\n",
+	UpdateAutoNotice: "\n📦 发现新版本：%s → %s，正在自动更新...\n",
+	UpdateChecking:   "当前版本: %s，正在检查更新...\n",
+	UpdateFailed:     "更新失败:",
+	UpdateUpToDate:   "已是最新版本 (%s)。\n",
+	UpdateDone:       "✓ 已更新到 %s。\n",
 
 	ErrNoDomains:    "错误: 没有有效的测试域名。",
+	ErrNoServers:    "错误: 没有有效的测试服务器。",
 	BenchStarting:   "DNS 选优工具: 开始对 %d 个 DNS 服务器、%d 个域名进行综合基准测试...\n\n",
 	ResultsHeader:   "\n--- 综合测试结果 ---",
 	RecommendHeader: "\n--- 最佳 DNS 推荐 (Top 3) ---",
@@ -250,6 +267,8 @@ var zh = &Messages{
 	NextRoundAt:   "⏳ 下一轮测试将在 %s 后开始 (%s) | 按 u 立即执行 | Ctrl+C 退出",
 	PollStopped:   "\n⏹ 轮询已结束，共执行 %d 轮。\n",
 	PollRunNow:    "\n⚡ 手动触发：立即执行下一轮...\n",
+
+	PressEnterToExit: "\n按回车键退出...",
 }
 
 // active is the currently selected catalog. Defaults to English so that code
