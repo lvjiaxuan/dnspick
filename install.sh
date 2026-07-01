@@ -2,7 +2,7 @@
 # dnspick installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/palemoky/dnspick/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/lvjiaxuan/dnspick/main/install.sh | sh
 #
 # Optional environment variables:
 #   DNSPICK_VERSION   version to install (default: latest), e.g. v2.0.0

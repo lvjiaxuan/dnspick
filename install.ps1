@@ -7,7 +7,7 @@
     installs it under the user directory and adds it to PATH.
 
 .EXAMPLE
-    irm https://raw.githubusercontent.com/palemoky/dnspick/main/install.ps1 | iex
+    irm https://raw.githubusercontent.com/lvjiaxuan/dnspick/main/install.ps1 | iex
 
 .NOTES
     Optional environment variables:

@@ -1,8 +1,12 @@
 package dnsbench
 
 import (
+	"bytes"
 	"cmp"
+	"fmt"
+	"net"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -248,4 +252,68 @@ func calculateScores(serverStats map[string]*serverStat, domains []Domain, portR
 	})
 
 	return results
+}
+
+// DomainEntry holds the best IP found for a single domain.
+type DomainEntry struct {
+	Domain  string
+	IP      string // bare IP (no port)
+	Latency time.Duration
+}
+
+// CollectBestIPs scans benchmark results and returns the lowest-latency
+// reachable IP per domain, filtered by port connectivity.
+func CollectBestIPs(results []Result, ports []int) map[string]*DomainEntry {
+	best := make(map[string]*DomainEntry)
+	for _, r := range results {
+		for _, res := range r.Resolutions {
+			for _, ip := range res.IPs {
+				for _, port := range ports {
+					key := net.JoinHostPort(ip, strconv.Itoa(port))
+					pr, ok := r.PortResults[key]
+					if !ok || !pr.OK {
+						continue
+					}
+					cur, exists := best[res.Domain]
+					if !exists || pr.Duration < cur.Latency ||
+						(pr.Duration == cur.Latency && ip < cur.IP) {
+						best[res.Domain] = &DomainEntry{
+							Domain:  res.Domain,
+							IP:      ip,
+							Latency: pr.Duration,
+						}
+					}
+				}
+			}
+		}
+	}
+	return best
+}
+
+// BuildDnspickBlock builds the hosts file block containing the best IP per domain.
+// Entries are sorted by domain name for deterministic output.
+// Returns the block bytes and the number of entries written.
+func BuildDnspickBlock(best map[string]*DomainEntry) ([]byte, int) {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "\n# --- dnspick start %s ---\n", now)
+
+	// 按域名排序，保证输出确定性，避免轮询模式下不必要的文件变更。
+	domains := make([]string, 0, len(best))
+	for d := range best {
+		domains = append(domains, d)
+	}
+	slices.Sort(domains)
+
+	count := 0
+	for _, domain := range domains {
+		entry := best[domain]
+		latencyStr := entry.Latency.Round(time.Millisecond).String()
+		fmt.Fprintf(&buf, "# %s latency %s %s\n", entry.IP, latencyStr, now)
+		fmt.Fprintf(&buf, "%s %s\n", entry.IP, entry.Domain)
+		count++
+	}
+
+	fmt.Fprintf(&buf, "# --- dnspick end ---\n")
+	return buf.Bytes(), count
 }

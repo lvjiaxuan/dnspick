@@ -12,8 +12,8 @@ import (
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
 
-	"github.com/palemoky/dnspick/internal/dnsbench"
-	"github.com/palemoky/dnspick/internal/i18n"
+	"github.com/lvjiaxuan/dnspick/internal/dnsbench"
+	"github.com/lvjiaxuan/dnspick/internal/i18n"
 )
 
 // CategoryLabel returns the localized display label for a domain category key.

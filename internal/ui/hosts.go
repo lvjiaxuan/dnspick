@@ -4,15 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"net"
 	"os"
+	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
-	"time"
 
-	"github.com/palemoky/dnspick/internal/dnsbench"
-	"github.com/palemoky/dnspick/internal/i18n"
+	"github.com/lvjiaxuan/dnspick/internal/dnsbench"
+	"github.com/lvjiaxuan/dnspick/internal/i18n"
 )
 
 // hostsFilePath returns the OS-specific path to the system hosts file.
@@ -31,10 +29,12 @@ func stripDnspickBlocks(content []byte) []byte {
 	var buf bytes.Buffer
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 	inBlock := false
+	found := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !inBlock && strings.HasPrefix(line, "# --- dnspick start") {
 			inBlock = true
+			found = true
 			// Trim the trailing blank line we may have just written.
 			b := buf.Bytes()
 			if len(b) > 0 && b[len(b)-1] == '\n' {
@@ -57,7 +57,32 @@ func stripDnspickBlocks(content []byte) []byte {
 		buf.WriteString(line)
 		buf.WriteByte('\n')
 	}
+	if !found {
+		return content // 未发现 dnspick 区块，原样返回，避免行尾规范化导致不必要的文件写入。
+	}
 	return buf.Bytes()
+}
+
+// ClearOldEntries reads the hosts file, strips old dnspick blocks, and
+// writes it back. If the file is unchanged (no old blocks found), this is a no-op.
+func ClearOldEntries() error {
+	path := hostsFilePath()
+
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	cleaned := stripDnspickBlocks(existing)
+	if bytes.Equal(cleaned, existing) {
+		return nil
+	}
+
+	if err := os.WriteFile(path, cleaned, 0644); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, i18n.L().HostsCleaned, path)
+	return nil
 }
 
 // WriteHostsFile writes the lowest-latency IP per domain to the system hosts
@@ -71,75 +96,69 @@ func WriteHostsFile(results []dnsbench.Result, ports []int) error {
 		return nil
 	}
 
-	// Collect all unique IPs per domain from all results, with port connectivity.
-	type domainEntry struct {
-		domain  string
-		ip      string        // bare IP (no port)
-		latency time.Duration
-	}
-
-	bestPerDomain := make(map[string]*domainEntry)
-
-	for _, r := range results {
-		for _, res := range r.Resolutions {
-			for _, ip := range res.IPs {
-				for _, port := range ports {
-					key := net.JoinHostPort(ip, strconv.Itoa(port))
-					pr, ok := r.PortResults[key]
-					if !ok || !pr.OK {
-						continue
-					}
-					cur, exists := bestPerDomain[res.Domain]
-					if !exists || pr.Duration < cur.latency {
-						bestPerDomain[res.Domain] = &domainEntry{
-							domain:  res.Domain,
-							ip:      ip,
-							latency: pr.Duration,
-						}
-					}
-				}
-			}
-		}
-	}
-
+	bestPerDomain := dnsbench.CollectBestIPs(results, ports)
 	if len(bestPerDomain) == 0 {
 		fmt.Fprint(os.Stderr, m.HostsNoData)
 		return nil
 	}
 
 	path := hostsFilePath()
-	now := time.Now().Format("2006-01-02 15:04:05")
 
-	// Read existing content and strip old dnspick blocks.
+	// 读取现有内容并清除旧 dnspick 块。
 	existing, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	cleaned := stripDnspickBlocks(existing)
 
-	// Build the new dnspick block.
-	var block bytes.Buffer
-	fmt.Fprintf(&block, "\n# --- dnspick start %s ---\n", now)
+	// 构建新 dnspick 块。
+	block, count := dnsbench.BuildDnspickBlock(bestPerDomain)
 
-	count := 0
-	for _, entry := range bestPerDomain {
-		latencyStr := entry.latency.Round(time.Millisecond).String()
-		fmt.Fprintf(&block, "# %s latency %s %s\n", entry.ip, latencyStr, now)
-		fmt.Fprintf(&block, "%s %s\n", entry.ip, entry.domain)
-		count++
-	}
-
-	fmt.Fprintf(&block, "# --- dnspick end ---\n")
-
-	// Write cleaned content + new block atomically.
+	// 写入：清理后内容 + 新块。
 	var out bytes.Buffer
 	out.Write(cleaned)
-	out.Write(block.Bytes())
+	out.Write(block)
 
 	if err := os.WriteFile(path, out.Bytes(), 0644); err != nil {
 		return err
 	}
 
+	// 回读验证，防止 Windows UAC 虚拟化导致写入被静默重定向。
+	verify, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, m.HostsWriteVerifyFailed)
+	}
+	if !bytes.Contains(verify, block) {
+		return fmt.Errorf("%w: %s", os.ErrPermission, m.HostsWriteVerifyFailed)
+	}
+
 	fmt.Fprintf(os.Stderr, m.HostsWritten, count, path)
+	// fmt.Fprintf(os.Stderr, "%s", block)
 	return nil
+}
+
+// FlushDNSCache 根据操作系统执行对应的 DNS 缓存刷新命令。
+// 仅支持 Windows 和 macOS，其他系统静默跳过。
+func FlushDNSCache() {
+	m := i18n.L()
+	switch runtime.GOOS {
+	case "windows":
+		cmd := exec.Command("ipconfig", "/flushdns")
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, m.DNSFlushFailed, err)
+			return
+		}
+		fmt.Fprint(os.Stderr, m.DNSFlushOK)
+	case "darwin":
+		// macOS 需要两步：dscacheutil + killall mDNSResponder，均需成功。
+		if err := exec.Command("dscacheutil", "-flushcache").Run(); err != nil {
+			fmt.Fprintf(os.Stderr, m.DNSFlushFailed, err)
+			return
+		}
+		if err := exec.Command("killall", "-HUP", "mDNSResponder").Run(); err != nil {
+			fmt.Fprintf(os.Stderr, m.DNSFlushFailed, err)
+			return
+		}
+		fmt.Fprint(os.Stderr, m.DNSFlushOK)
+	}
 }

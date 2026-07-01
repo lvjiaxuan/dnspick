@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/palemoky/dnspick/internal/dnsbench"
+	"github.com/lvjiaxuan/dnspick/internal/dnsbench"
 )
 
 func TestSystemDNSVerdict(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
 	"time"
@@ -13,9 +14,37 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"golang.org/x/term"
 
-	"github.com/palemoky/dnspick/internal/dnsbench"
-	"github.com/palemoky/dnspick/internal/i18n"
+	"github.com/lvjiaxuan/dnspick/internal/dnsbench"
+	"github.com/lvjiaxuan/dnspick/internal/i18n"
 )
+
+// stdinKeyCh receives single keystrokes from stdin in raw terminal mode.
+// initStdinReader starts the reader goroutine exactly once and keeps it alive
+// for the entire program lifetime, avoiding goroutine leaks and stdin races
+// across multiple WaitForNextRound calls.
+var (
+	stdinKeyCh   chan byte
+	stdinKeyOnce sync.Once
+)
+
+func initStdinReader() chan byte {
+	stdinKeyOnce.Do(func() {
+		stdinKeyCh = make(chan byte, 4)
+		go func() {
+			buf := make([]byte, 1)
+			for {
+				n, err := os.Stdin.Read(buf)
+				if n > 0 {
+					stdinKeyCh <- buf[0]
+				}
+				if err != nil {
+					return
+				}
+			}
+		}()
+	})
+	return stdinKeyCh
+}
 
 // catGroup is a group of domains aggregated by category (indices point into
 // StatusTracker.domains/done). category is the stable category key.
@@ -216,4 +245,118 @@ func statusCell(done, total int) string {
 	default:
 		return color.CyanString("%d%%", done*100/total)
 	}
+}
+
+// PrintRoundBanner prints the polling round header with round number and timestamp.
+func PrintRoundBanner(round int) {
+	m := i18n.L()
+	now := time.Now().Format("2006-01-02 15:04:05")
+	banner := fmt.Sprintf(m.RoundBanner, round, now)
+	bold := color.New(color.Bold).SprintFunc()
+	fmt.Println()
+	fmt.Println(bold(banner))
+	fmt.Println()
+}
+
+// WaitForNextRound blocks until the interval elapses, the user presses 'u'
+// (TTY only, run-now), or an interrupt signal is received. On a TTY it shows
+// a live countdown that refreshes in place and listens for keystrokes via raw
+// terminal mode. Returns:
+//
+//	1 — timer elapsed normally (caller should start the next round)
+//	2 — user pressed 'u' to trigger immediately (caller should start the next round)
+//	0 — interrupted (caller should exit)
+func WaitForNextRound(interval time.Duration) int {
+	m := i18n.L()
+	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
+	nextRunAt := time.Now().Add(interval).Format("15:04:05")
+
+	// Set up interrupt listener.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	defer signal.Stop(sigCh)
+
+	if !isTTY {
+		// Non-TTY: print a static message and wait.
+		fmt.Printf(m.NextRoundAt, formatDuration(interval), nextRunAt)
+		fmt.Println()
+		select {
+		case <-sigCh:
+			fmt.Fprintf(color.Output, m.PollStopped, 0)
+			return 0
+		case <-time.After(interval):
+			return 1
+		}
+	}
+
+	// TTY: enter raw mode to capture single keystrokes without Enter.
+	// The stdin reader goroutine is started exactly once (package-level singleton)
+	// and reused across all calls to avoid goroutine leaks competing for stdin.
+	keyCh := initStdinReader()
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err == nil {
+		defer term.Restore(int(os.Stdin.Fd()), oldState)
+	}
+
+	// TTY: live countdown with in-place refresh.
+	deadline := time.Now().Add(interval)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			// Clear the countdown line.
+			fmt.Fprint(color.Output, "\r\033[K")
+			return 1
+		}
+
+		durStr := formatDuration(remaining.Round(time.Second))
+		line := fmt.Sprintf(m.NextRoundAt, durStr, nextRunAt)
+		fmt.Fprintf(color.Output, "\r\033[K%s", line)
+
+		select {
+		case <-sigCh:
+			fmt.Fprintf(color.Output, "\r\033[K")
+			fmt.Fprintf(color.Output, m.PollStopped, 0)
+			return 0
+		case k := <-keyCh:
+			// 'u' or 'U' → run next round immediately.
+			if k == 'u' || k == 'U' {
+				fmt.Fprintf(color.Output, "\r\033[K")
+				fmt.Fprint(color.Output, m.PollRunNow)
+				return 2
+			}
+			// Ctrl+C (0x03) → exit (backup for raw mode where SIGINT may not fire).
+			if k == 0x03 {
+				fmt.Fprintf(color.Output, "\r\033[K")
+				fmt.Fprintf(color.Output, m.PollStopped, 0)
+				return 0
+			}
+		case <-ticker.C:
+			// loop continues
+		}
+	}
+}
+
+// PrintPollStopped prints the polling stopped message with the total round count.
+func PrintPollStopped(rounds int) {
+	fmt.Fprintf(color.Output, i18n.L().PollStopped, rounds)
+}
+
+// formatDuration formats a duration as "Xm Ys" or "Ys" for the countdown display.
+func formatDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	total := int(d.Seconds())
+	if total >= 60 {
+		m := total / 60
+		s := total % 60
+		if s > 0 {
+			return fmt.Sprintf("%dm %ds", m, s)
+		}
+		return fmt.Sprintf("%dm", m)
+	}
+	return fmt.Sprintf("%ds", total)
 }

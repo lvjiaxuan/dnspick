@@ -2,7 +2,7 @@ APP_NAME := dnspick
 BUILD_DIR := builds
 
 # Version info (injected into internal/buildinfo at build time)
-PKG     := github.com/palemoky/dnspick/internal/buildinfo
+PKG     := github.com/lvjiaxuan/dnspick/internal/buildinfo
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE    := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)

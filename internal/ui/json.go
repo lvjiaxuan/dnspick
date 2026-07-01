@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/palemoky/dnspick/internal/dnsbench"
+	"github.com/lvjiaxuan/dnspick/internal/dnsbench"
 )
 
 // jsonSchemaVersion is the version of the --json document structure. It is the
@@ -18,6 +18,8 @@ const jsonSchemaVersion = 3
 // jsonReport is the top-level machine-readable benchmark output.
 type jsonReport struct {
 	Schema           int                `json:"schema"`
+	Round            int                `json:"round,omitempty"`
+	Timestamp        string             `json:"timestamp,omitempty"`
 	QueriesPerDomain int                `json:"queries_per_domain"`
 	ServersTested    int                `json:"servers_tested"`
 	DomainsTested    int                `json:"domains_tested"`
@@ -86,11 +88,13 @@ type jsonSystemVerdict struct {
 
 // WriteJSON serializes the benchmark results as indented JSON to w. domains is the
 // number of domains tested; ports is the list of TCP ports tested for connectivity;
-// the rest of the metadata is derived from results, which must be sorted by score
-// in descending order.
-func WriteJSON(w io.Writer, results []dnsbench.Result, queriesPerDomain, domains int, ports []int) error {
+// round and timestamp are populated only in polling mode; the rest of the metadata
+// is derived from results, which must be sorted by score in descending order.
+func WriteJSON(w io.Writer, results []dnsbench.Result, queriesPerDomain, domains int, ports []int, round int, timestamp string) error {
 	rep := jsonReport{
 		Schema:           jsonSchemaVersion,
+		Round:            round,
+		Timestamp:        timestamp,
 		QueriesPerDomain: queriesPerDomain,
 		ServersTested:    len(results),
 		DomainsTested:    domains,

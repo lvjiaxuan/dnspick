@@ -1,4 +1,4 @@
-module github.com/palemoky/dnspick
+module github.com/lvjiaxuan/dnspick
 
 go 1.25.0
 

@@ -5,20 +5,21 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/palemoky/dnspick/internal/buildinfo"
-	"github.com/palemoky/dnspick/internal/dnsbench"
-	"github.com/palemoky/dnspick/internal/i18n"
-	"github.com/palemoky/dnspick/internal/ui"
-	"github.com/palemoky/dnspick/internal/updater"
+	"github.com/lvjiaxuan/dnspick/internal/buildinfo"
+	"github.com/lvjiaxuan/dnspick/internal/dnsbench"
+	"github.com/lvjiaxuan/dnspick/internal/i18n"
+	"github.com/lvjiaxuan/dnspick/internal/ui"
+	"github.com/lvjiaxuan/dnspick/internal/updater"
 )
 
-//go:embed configs.yml
+//go:embed dnspicker-config.yml
 var embeddedConfig []byte
 
 var (
@@ -32,6 +33,7 @@ var (
 	portStr          string
 	portOnlyStr      string
 	writeHosts       bool
+	intervalStr      string
 )
 
 var rootCmd = &cobra.Command{
@@ -77,6 +79,7 @@ func setup() {
 	flags.StringVar(&portStr, "port", "", m.FlagPort)
 	flags.StringVar(&portOnlyStr, "port-only", "", m.FlagPortOnly)
 	flags.BoolVarP(&writeHosts, "write", "w", false, m.FlagWrite)
+	flags.StringVar(&intervalStr, "interval", "", m.FlagInterval)
 
 	rootCmd.AddCommand(versionCmd, updateCmd)
 }
@@ -109,6 +112,9 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 		ports = parsePorts(portOnlyStr)
 	}
 
+	// Parse polling interval (0 or empty = single run).
+	interval := parseInterval(intervalStr)
+
 	// Domains: use the custom list when -d is given (classified as Custom),
 	// otherwise fall back to the built-in categorized list.
 	domains := dnsbench.DefaultDomains
@@ -136,17 +142,71 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 		Ports:       ports,
 	}
 
+	// Single-run mode: no loop.
+	if interval <= 0 {
+		return executeOnce(opts, ports, portOnly, 0, "")
+	}
+
+	// Polling mode: loop until interrupted.
+	round := 0
+	for {
+		round++
+		if !jsonOutput {
+			ui.PrintRoundBanner(round)
+		}
+
+		now := time.Now()
+		if err := executeOnce(opts, ports, portOnly, round, now.Format(time.RFC3339)); err != nil {
+			return err
+		}
+
+		result := ui.WaitForNextRound(interval)
+		if result == 0 {
+			// Interrupted: print summary and exit cleanly.
+			ui.PrintPollStopped(round)
+			return nil
+		}
+	}
+}
+
+// executeOnce runs a single benchmark cycle. round and timestamp are included
+// in JSON output when in polling mode (round > 0); they are ignored for
+// human-readable output.
+func executeOnce(opts dnsbench.Options, ports []int, portOnly bool, round int, timestamp string) error {
+	m := i18n.L()
+
 	// JSON mode: stdout carries only the JSON document, status goes to stderr,
 	// and the live progress UI is skipped so the output stays pipe-friendly.
 	if jsonOutput {
-		fmt.Fprintf(os.Stderr, m.BenchStarting, len(servers), len(domains))
+		// 在 benchmark 开始前清理旧的 hosts 条目并刷新 DNS 缓存。
+		if writeHosts {
+			if err := ui.ClearOldEntries(); err != nil {
+				fmt.Fprintf(os.Stderr, m.HostsFailed, err)
+			}
+			ui.FlushDNSCache()
+		}
+		fmt.Fprintf(os.Stderr, m.BenchStarting, len(opts.Servers), len(opts.Domains))
 		results := dnsbench.Run(opts, nil)
-		return ui.WriteJSON(os.Stdout, results, queriesPerDomain, len(domains), ports)
+		// JSON 模式下同样需要将最佳 IP 写入 hosts 文件。
+		if writeHosts {
+			if err := ui.WriteHostsFile(results, ports); err != nil {
+				fmt.Fprintf(os.Stderr, m.HostsFailed, err)
+			}
+		}
+		return ui.WriteJSON(os.Stdout, results, queriesPerDomain, len(opts.Domains), ports, round, timestamp)
 	}
 
-	fmt.Printf(m.BenchStarting, len(servers), len(domains))
+	// 在 benchmark 开始前清理旧的 hosts 条目并刷新 DNS 缓存，避免旧 IP 影响测试结果。
+	if writeHosts {
+		if err := ui.ClearOldEntries(); err != nil {
+			fmt.Fprintf(os.Stderr, m.HostsFailed, err)
+		}
+		ui.FlushDNSCache()
+	}
 
-	tracker := ui.NewStatusTracker(domains, len(servers), queriesPerDomain)
+	fmt.Printf(m.BenchStarting, len(opts.Servers), len(opts.Domains))
+
+	tracker := ui.NewStatusTracker(opts.Domains, len(opts.Servers), queriesPerDomain)
 	tracker.Start()
 	results := dnsbench.Run(opts, tracker.Progress)
 	tracker.Stop()
@@ -172,8 +232,17 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 }
 
 func main() {
-	// Load servers/domains from configs.yml (embedded at compile time).
-	if err := dnsbench.LoadConfig(embeddedConfig); err != nil {
+	// Load servers/domains from ~/dnspick-config.yml, fallback to embedded dnspicker-config.yml.
+	var configData []byte
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		if data, err := os.ReadFile(filepath.Join(homeDir, "dnspick-config.yml")); err == nil {
+			configData = data
+		}
+	}
+	if configData == nil {
+		configData = embeddedConfig
+	}
+	if err := dnsbench.LoadConfig(configData); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
@@ -230,4 +299,19 @@ func parsePorts(s string) []int {
 		}
 	}
 	return ports
+}
+
+// parseInterval parses the --interval flag value as minutes and returns a
+// time.Duration. Returns 0 for empty or invalid values (single-run mode).
+// The minimum effective interval is 1 minute.
+func parseInterval(s string) time.Duration {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "0" {
+		return 0
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return time.Duration(n) * time.Minute
 }

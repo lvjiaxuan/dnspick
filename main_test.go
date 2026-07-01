@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLangFromArgs(t *testing.T) {
 	tests := []struct {
@@ -47,6 +50,28 @@ func TestParsePorts(t *testing.T) {
 			if got[i] != tt.want[i] {
 				t.Errorf("parsePorts(%q)[%d] = %d, want %d", tt.input, i, got[i], tt.want[i])
 			}
+		}
+	}
+}
+
+func TestParseInterval(t *testing.T) {
+	tests := []struct {
+		input string
+		want  time.Duration
+	}{
+		{"", 0},
+		{"  ", 0},
+		{"0", 0},
+		{"abc", 0},
+		{"-1", 0},
+		{"1", 1 * time.Minute},
+		{"5", 5 * time.Minute},
+		{" 10 ", 10 * time.Minute},
+	}
+	for _, tt := range tests {
+		got := parseInterval(tt.input)
+		if got != tt.want {
+			t.Errorf("parseInterval(%q) = %v, want %v", tt.input, got, tt.want)
 		}
 	}
 }

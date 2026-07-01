@@ -40,7 +40,7 @@ type Domain struct {
 	Name, Category string
 }
 
-// configFile mirrors the top-level structure of configs.yml.
+// configFile mirrors the top-level structure of dnspick-config.yml.
 type configFile struct {
 	Servers []struct {
 		Name     string `yaml:"name"`
@@ -53,10 +53,10 @@ type configFile struct {
 	} `yaml:"domains"`
 }
 
-// DefaultServers is populated from configs.yml via LoadConfig.
+// DefaultServers is populated from dnspick-config.yml via LoadConfig.
 var DefaultServers []Server
 
-// DefaultDomains is populated from configs.yml via LoadConfig.
+// DefaultDomains is populated from dnspick-config.yml via LoadConfig.
 var DefaultDomains []Domain
 
 // LoadConfig parses the given YAML bytes and populates DefaultServers and

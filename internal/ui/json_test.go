@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/palemoky/dnspick/internal/dnsbench"
+	"github.com/lvjiaxuan/dnspick/internal/dnsbench"
 )
 
 func TestWriteJSON(t *testing.T) {
@@ -24,7 +24,7 @@ func TestWriteJSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteJSON(&buf, results, 3, 2, nil); err != nil {
+	if err := WriteJSON(&buf, results, 3, 2, nil, 0, ""); err != nil {
 		t.Fatalf("WriteJSON: %v", err)
 	}
 
@@ -104,7 +104,7 @@ func TestWriteJSON_WithResolutionsAndPorts(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteJSON(&buf, results, 3, 1, []int{443}); err != nil {
+	if err := WriteJSON(&buf, results, 3, 1, []int{443}, 0, ""); err != nil {
 		t.Fatalf("WriteJSON: %v", err)
 	}
 

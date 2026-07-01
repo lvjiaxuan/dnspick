@@ -37,6 +37,7 @@ type Messages struct {
 	FlagPort        string
 	FlagPortOnly    string
 	FlagWrite       string
+	FlagInterval    string
 
 	// update command.
 	UpdateChecking string // "Current version: %s, checking for updates...\n"
@@ -87,9 +88,20 @@ type Messages struct {
 	PortAllFailed   string   // "✗ %s: all connections failed"
 
 	// hosts file write.
-	HostsWritten  string // "✓ Wrote %d entries to %s\n"
-	HostsNoData   string // "No port connectivity data available, skipping hosts file write.\n"
-	HostsFailed   string // "Failed to write hosts file: %s\n"
+	HostsWritten           string // "✓ Wrote %d entries to %s\n"
+	HostsNoData            string // "No port connectivity data available, skipping hosts file write.\n"
+	HostsFailed            string // "Failed to write hosts file: %s\n"
+	HostsWriteVerifyFailed string // "write verification failed, please run as administrator"
+	HostsCleaned           string // "✓ Cleaned old dnspick entries from %s\n"
+	DNSFlushOK             string // "✓ DNS cache flushed.\n"
+	DNSFlushFailed         string // "⚠ Failed to flush DNS cache: %s\n"
+
+	// polling / interval mode.
+	RoundBanner   string // "═══ 🔄 Round #%d  |  %s ═══"
+	NextRoundWait string // "⏳ Next round in %s... | Ctrl+C to exit"
+	NextRoundAt   string // "⏳ Next round in %s (%s) | Ctrl+C to exit"
+	PollStopped   string // "\n⏹ Polling stopped after %d rounds.\n"
+	PollRunNow    string // "\n⚡ Manual trigger: running next round immediately...\n"
 }
 
 var en = &Messages{
@@ -108,6 +120,7 @@ var en = &Messages{
 	FlagPort:        "Comma-separated ports to test TCP connectivity for resolved IPs (e.g. 443,22)",
 	FlagPortOnly:    "Only output DNS resolution and port connectivity test results (e.g. 443,22)",
 	FlagWrite:       "Write the lowest-latency IP per domain to the system hosts file",
+	FlagInterval:    "Polling interval in minutes; the program runs continuously, re-testing every n minutes (0 = single run)",
 
 	UpdateChecking: "Current version: %s, checking for updates...\n",
 	UpdateFailed:   "update failed:",
@@ -150,9 +163,19 @@ var en = &Messages{
 	PortFailSummary: "✗ %d connections failed",
 	PortAllFailed:   "✗ %s: all connections failed",
 
-	HostsWritten: "✓ Wrote %d entries to %s\n",
-	HostsNoData:  "No port connectivity data available, skipping hosts file write.\n",
-	HostsFailed:  "Failed to write hosts file: %s\n",
+	HostsWritten:           "✓ Wrote %d entries to %s\n",
+	HostsNoData:            "No port connectivity data available, skipping hosts file write.\n",
+	HostsFailed:            "Failed to write hosts file: %s\n",
+	HostsWriteVerifyFailed: "write verification failed, please run as administrator on Windows",
+	HostsCleaned:           "✓ Cleaned old dnspick entries from %s\n",
+	DNSFlushOK:             "✓ DNS cache flushed.\n",
+	DNSFlushFailed:         "⚠ Failed to flush DNS cache: %s\n",
+
+	RoundBanner:   "═══ 🔄 Round #%d  |  %s ═══",
+	NextRoundWait: "⏳ Next round in %s... | Press u to run now | Ctrl+C to exit",
+	NextRoundAt:   "⏳ Next round in %s (%s) | Press u to run now | Ctrl+C to exit",
+	PollStopped:   "\n⏹ Polling stopped after %d rounds.\n",
+	PollRunNow:    "\n⚡ Manual trigger: running next round immediately...\n",
 }
 
 var zh = &Messages{
@@ -171,6 +194,7 @@ var zh = &Messages{
 	FlagPort:        "自定义 TCP 端口连通性测试，以逗号分隔（如 443,22）",
 	FlagPortOnly:    "仅输出 DNS 解析及端口连通性测试结果（如 443,22）",
 	FlagWrite:       "将每个域名延迟最低的 IP 写入系统 hosts 文件",
+	FlagInterval:    "轮询间隔（分钟），程序将持续运行，每隔 n 分钟重新执行一次测试（0 = 单次运行）",
 
 	UpdateChecking: "当前版本: %s，正在检查更新...\n",
 	UpdateFailed:   "更新失败:",
@@ -213,9 +237,19 @@ var zh = &Messages{
 	PortFailSummary: "✗ %d 项连接失败",
 	PortAllFailed:   "✗ %s: 所有连接均失败",
 
-	HostsWritten: "✓ 已写入 %d 条记录到 %s\n",
-	HostsNoData:  "没有端口连通性数据，跳过 hosts 文件写入。\n",
-	HostsFailed:  "写入 hosts 文件失败: %s\n",
+	HostsWritten:           "✓ 已写入 %d 条记录到 %s\n",
+	HostsNoData:            "没有端口连通性数据，跳过 hosts 文件写入。\n",
+	HostsFailed:            "写入 hosts 文件失败: %s\n",
+	HostsWriteVerifyFailed: "写入验证失败，请在 Windows 下以管理员身份运行",
+	HostsCleaned:           "✓ 已从 %s 清除旧的 dnspick 条目\n",
+	DNSFlushOK:             "✓ DNS 缓存已刷新。\n",
+	DNSFlushFailed:         "⚠ DNS 缓存刷新失败: %s\n",
+
+	RoundBanner:   "═══ 🔄 第 %d 轮  |  %s ═══",
+	NextRoundWait: "⏳ 下一轮测试将在 %s 后开始... | 按 u 立即执行 | Ctrl+C 退出",
+	NextRoundAt:   "⏳ 下一轮测试将在 %s 后开始 (%s) | 按 u 立即执行 | Ctrl+C 退出",
+	PollStopped:   "\n⏹ 轮询已结束，共执行 %d 轮。\n",
+	PollRunNow:    "\n⚡ 手动触发：立即执行下一轮...\n",
 }
 
 // active is the currently selected catalog. Defaults to English so that code
